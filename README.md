@@ -14,6 +14,12 @@ The project is designed to be lightweight, storing all information in local CSV 
 
 ---
 
+## 🎥 Demo Video
+
+Watch the application in action: [Lego Tracker Demo Video (Google Drive)](https://drive.google.com/file/d/166PqsiH0nErKtvf9k1PQxifuFTq4XEv3/view?usp=drive_link)
+
+---
+
 ## ✨ Key Features
 
 *   **📊 Dual Financial Dashboard**:
@@ -132,6 +138,12 @@ The repository is pre-configured to **start completely empty** for new users:
 Un panel de control web premium, interactivo y moderno diseñado para coleccionistas e inversores de LEGO. Esta aplicación te permite catalogar tus sets, realizar un seguimiento de su valor financiero, gestionar minifiguras, buscar piezas faltantes en tiempo real mediante integraciones con las APIs de **Rebrickable** y **Brickset**, y visualizar toda tu colección en una interfaz con diseño glassmorphism adaptativo y temas visuales dinámicos.
 
 El proyecto está diseñado para ser ligero, almacenando toda la información en bases de datos locales en formato CSV, y viene listo para usarse desde cero con una colección vacía.
+
+---
+
+## 🎥 Video de Demostración
+
+Mira la aplicación en acción: [Video de Demostración de Lego Tracker (Google Drive)](https://drive.google.com/file/d/166PqsiH0nErKtvf9k1PQxifuFTq4XEv3/view?usp=drive_link)
 
 ---
 
