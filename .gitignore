@@ -1,0 +1,40 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+.env/
+
+# Python caching and build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Backups
+backups/
+*.bak
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# User collection databases and backups
+legos.csv
+legos.csv.bak
+missing_pieces.csv
+missing_pieces_*.csv.bak
+
+# API Keys and Local Caches
+rebrickable_key.txt
+minifigs_cache.json
+parts_cache.json
+set_minifigs_cache.json
+piece_lookup_results.json
+lote_data.json
+
+# Local images downloaded from Rebrickable/Brickset (keeps UI/theme assets)
+public/images/minifigs/
+public/images/[0-9]*
+public/images/sw[0-9]*

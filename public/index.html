@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrickControl - Lego Portfolio Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=1.1.0">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar or Header Block -->
+        <header class="app-header">
+            <div class="logo-area">
+                <img src="images/logo.png" alt="LEGO Logo" class="logo-img">
+                <div class="logo-text">
+                    <h1>BrickControl</h1>
+                    <p>Lego Tracker & Investment Dashboard</p>
+                </div>
+            </div>
+            <button id="btn-add-set" class="btn btn-primary btn-with-icon">
+                <span class="icon-plus">+</span> Añadir Nuevo Set
+            </button>
+            <button id="btn-add-minifig" class="btn btn-primary btn-with-icon hidden">
+                <span class="icon-plus">+</span> Añadir Minifigura
+            </button>
+            <button id="btn-add-piece" class="btn btn-primary btn-with-icon hidden">
+                <span class="icon-plus">+</span> Añadir Pieza
+            </button>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="app-nav">
+            <button id="nav-sets" class="nav-btn active">🧱 Mis Sets de Lego</button>
+            <button id="nav-minifigs" class="nav-btn">👥 Colección de Minifiguras</button>
+            <button id="nav-shopping-list" class="nav-btn">🛒 Lista de Compras</button>
+        </nav>
+
+        <!-- KPI Grid (Doble Vista: Inversión vs Colección/Legacy y Minifiguras) -->
+        <section class="stats-section">
+            <!-- Sets KPIs -->
+            <div id="sets-kpis" class="kpis-container">
+                <div class="kpi-group-title">
+                    <h2>📈 Cartera de Inversión (Especulación)</h2>
+                </div>
+                <div class="kpi-grid investment-kpis">
+                    <div class="kpi-card" id="kpi-total-spent">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Total Euros Gastados</span>
+                            <h3 class="kpi-value" id="val-total-spent">0.00 €</h3>
+                            <span class="kpi-sub" id="sub-spent-extra">(incl. 0.00 € de costes ocultos)</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-total-saved">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Total Ahorrado (vs PVP)</span>
+                            <h3 class="kpi-value value-saved" id="val-total-saved">0.00 €</h3>
+                            <span class="kpi-sub" id="val-avg-saving-pct">0% ahorro medio</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-investment-roi">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Plusvalía Estimada Inversión</span>
+                            <h3 class="kpi-value value-gain" id="val-investment-profit">0.00 €</h3>
+                            <span class="kpi-sub" id="val-investment-roi-pct">0% ROI estimado</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kpi-group-title margin-top-lg">
+                    <h2>✨ Colección Personal & Legacy (Nostalgia)</h2>
+                </div>
+                <div class="kpi-grid collection-kpis">
+                    <div class="kpi-card" id="kpi-portfolio-equity">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Valor Estimado de Colección</span>
+                            <h3 class="kpi-value value-equity" id="val-portfolio-equity">0.00 €</h3>
+                            <span class="kpi-sub" id="val-collection-sets-count">0 sets registrados</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-legacy-count">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Joyas Legacy de la Infancia</span>
+                            <h3 class="kpi-value" id="val-legacy-count">0 sets</h3>
+                            <span class="kpi-sub">Adquiridos sin coste de compra</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Minifigures KPIs (Hidden by default) -->
+            <div id="minifigs-kpis" class="kpis-container hidden">
+                <div class="kpi-group-title">
+                    <h2>👥 Resumen de tu Ejército de Figuras</h2>
+                </div>
+                <div class="kpi-grid collection-kpis">
+                    <div class="kpi-card" id="kpi-total-minifigs">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Total de Minifiguras</span>
+                            <h3 class="kpi-value" id="val-total-minifigs">0</h3>
+                            <span class="kpi-sub">En toda tu colección</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-unique-minifigs">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Figuras Únicas</span>
+                            <h3 class="kpi-value value-saved" id="val-unique-minifigs">0</h3>
+                            <span class="kpi-sub">Diseños diferentes</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-army-leader">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Ejército Principal</span>
+                            <h3 class="kpi-value value-equity" id="val-army-leader">Ninguno</h3>
+                            <span class="kpi-sub" id="val-army-leader-sub">Temática más numerosa</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shopping List KPIs (Hidden by default) -->
+            <div id="shopping-list-kpis" class="kpis-container hidden">
+                <div class="kpi-group-title">
+                    <h2>🛒 Resumen de Piezas Faltantes</h2>
+                </div>
+                <div class="kpi-grid collection-kpis">
+                    <div class="kpi-card" id="kpi-total-missing-parts">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Piezas Necesarias</span>
+                            <h3 class="kpi-value" id="val-total-missing-parts">0</h3>
+                            <span class="kpi-sub" id="val-missing-parts-types">0 tipos de piezas</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-ordered-missing-parts">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Piezas Pedidas (En Camino)</span>
+                            <h3 class="kpi-value value-saved" id="val-ordered-missing-parts">0</h3>
+                            <span class="kpi-sub">Esperando entrega</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-received-missing-parts">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Piezas Recibidas</span>
+                            <h3 class="kpi-value value-equity" id="val-received-missing-parts">0</h3>
+                            <span class="kpi-sub">Listas para el montaje</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Visual Category Grid -->
+        <section class="category-selection-section">
+            <span class="filter-label">Explorar por Categoría:</span>
+            <div class="category-grid" id="theme-tabs">
+                <div class="category-card active" data-theme="all">
+                    <div class="category-bg" style="background-image: url('images/lego_bg.jpg')"></div>
+                    <div class="category-overlay"></div>
+                    <div class="category-content">
+                        <span class="category-icon">🧱</span>
+                        <h3 class="category-title">Todos</h3>
+                        <span class="category-count" id="count-all">0 sets</span>
+                    </div>
+                </div>
+                <div class="category-card" data-theme="Star Wars">
+                    <div class="category-bg" style="background-image: url('images/sw_bg.jpg')"></div>
+                    <div class="category-overlay"></div>
+                    <div class="category-content">
+                        <img src="images/sw_logo.svg" alt="Star Wars" class="category-logo-img">
+                        <h3 class="category-title">Star Wars</h3>
+                        <span class="category-count" id="count-sw">0 sets</span>
+                    </div>
+                </div>
+                <div class="category-card" data-theme="Batman">
+    <div class="category-bg" style="background-image: url('images/batman.jpg')"></div>
+    <div class="category-overlay"></div>
+    <div class="category-content">
+        <img src="images/bat_logo.svg" alt="Batman" class="category-logo-img">
+        <h3 class="category-title">Batman</h3>
+        <span class="category-count" id="count-bat">0 sets</span>
+    </div>
+</div>
+<div class="category-card" data-theme="Pirates of the Caribbean">
+    <div class="category-bg" style="background-image: url('images/Piratas_del_Caribe.webp')"></div>
+    <div class="category-overlay"></div>
+    <div class="category-content">
+        <img src="images/pir_logo.svg" alt="Pirates" class="category-logo-img">
+        <h3 class="category-title">Piratas</h3>
+        <span class="category-count" id="count-pir">0 sets</span>
+    </div>
+</div>
+<div class="category-card" data-theme="Harry Potter">
+    <div class="category-bg" style="background-image: url('images/harry potter.png')"></div>
+    <div class="category-overlay"></div>
+    <div class="category-content">
+        <h3 class="category-title">Harry Potter</h3>
+        <span class="category-count" id="count-hp">0 sets</span>
+    </div>
+</div>
+<div class="category-card" data-theme="other">
+                    <div class="category-bg" style="background-image: url('images/lego_bg.jpg'); filter: grayscale(80%) brightness(30%);"></div>
+                    <div class="category-overlay"></div>
+                    <div class="category-content">
+                        <span class="category-icon">🧩</span>
+                        <h3 class="category-title">Otros</h3>
+                        <span class="category-count" id="count-other">0 sets</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filters and Searching -->
+        <section class="toolbar-section">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" placeholder="Buscar por ID, nombre, subcategoría, tienda, notas...">
+            </div>
+
+            <div class="filter-controls">
+                <div class="filter-group-row">
+                    <div class="select-wrapper">
+                        <label for="filter-goal">Propósito:</label>
+                        <select id="filter-goal">
+                            <option value="all">Todos los Propósitos</option>
+                            <option value="investment">Inversión (Especulación)</option>
+                            <option value="collection">Colección Propia</option>
+                            <option value="legacy">Colección Legado</option>
+                        </select>
+                    </div>
+
+                    <div class="select-wrapper">
+                        <label for="sort-select">Ordenar por:</label>
+                        <select id="sort-select">
+                            <option value="purchase_date_desc">Fecha Compra: Más reciente</option>
+                            <option value="purchase_date_asc">Fecha Compra: Más antiguo</option>
+                            <option value="id_asc">ID: Ascendente</option>
+                            <option value="saving_desc">Ahorro %: Mayor primero</option>
+                            <option value="profit_desc">Plusvalía (€): Mayor primero</option>
+                            <option value="market_price_desc">Valor Mercado: Mayor primero</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Sets Grid -->
+        <main class="grid-section">
+            <!-- Active Theme Banner -->
+            <section id="category-hero" class="category-hero-section hidden">
+                <div class="hero-overlay"></div>
+                <div class="hero-content">
+                    <img id="hero-logo" class="hero-logo-img" src="" alt="Theme Logo">
+                    <h2 id="hero-title"></h2>
+                    <p id="hero-subtitle"></p>
+                </div>
+            </section>
+            
+            <div id="sets-grid" class="sets-grid">
+                <!-- Dynamic Cards Rendered Here -->
+            </div>
+            
+            <div id="minifigs-grid" class="minifigs-grid hidden">
+                <!-- Dynamic Minifig Cards Rendered Here -->
+            </div>
+
+            <div id="shopping-list-view" class="shopping-list-view hidden">
+                <div class="shopping-list-header-controls">
+                    <div class="group-btn-container">
+                        <button id="btn-group-by-set" class="btn-group-by active">📋 Agrupar por Set</button>
+                        <button id="btn-group-by-part" class="btn-group-by">🧱 Agrupar por Pieza</button>
+                    </div>
+                </div>
+                <div id="shopping-list-container" class="shopping-list-container">
+                    <!-- Dynamic Shopping List Rendered Here -->
+                </div>
+            </div>
+
+            <div id="empty-state" class="empty-state hidden">
+                <div class="empty-icon">📂</div>
+                <h3>No se encontraron sets de Lego</h3>
+                <p>Prueba a cambiar tus filtros de búsqueda o añade un nuevo set de Lego para empezar.</p>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer-info">
+            <p>BrickControl - Base de datos local: <code>legos.csv</code> (auto-backups activados en cada cambio)</p>
+        </footer>
+    </div>
+
+    <!-- ADD/EDIT MODAL -->
+    <div id="set-modal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-title">Añadir Set de Lego</h2>
+                <button id="btn-close-modal" class="modal-close-btn">&times;</button>
+            </div>
+            <form id="set-form" class="modal-form">
+                <!-- Grid of fields -->
+                <div class="form-grid">
+                    <div class="form-group col-span-1">
+                        <label for="field-id">ID del Set *</label>
+                        <div class="input-with-button">
+                            <input type="text" id="field-id" required placeholder="ej: 75337">
+                            <button type="button" id="btn-lookup-set" class="btn-lookup" title="Autocompletar datos por ID">🔍</button>
+                        </div>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label for="field-name">Nombre del Set *</label>
+                        <input type="text" id="field-name" required placeholder="ej: AT-TE Walker">
+                    </div>
+
+                    <div class="form-group set-only-field">
+                        <label for="field-theme">Tema Principal *</label>
+                        <input type="text" id="field-theme" required placeholder="ej: Star Wars">
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-subcategory">Subcategoría / Colección</label>
+                        <input type="text" id="field-subcategory" placeholder="ej: Revenge of the Sith">
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-official-url">Lego URL Oficial</label>
+                        <input type="url" id="field-official-url" placeholder="https://www.lego.com/...">
+                    </div>
+
+                    <div class="form-group set-only-field">
+                        <label for="field-release-date">Fecha de Salida *</label>
+                        <input type="date" id="field-release-date" required>
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-retirement-date">Fecha de Retirada (o 'Active') *</label>
+                        <input type="text" id="field-retirement-date" required value="Active" placeholder="YYYY-MM-DD o Active">
+                    </div>
+                    <div class="form-group">
+                        <label for="field-purchase-date">Fecha de Compra</label>
+                        <input type="date" id="field-purchase-date">
+                    </div>
+
+                    <div class="form-group set-only-field">
+                        <label for="field-retail-price">Precio Oficial PVP (€) *</label>
+                        <input type="number" id="field-retail-price" step="0.01" min="0" required placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="field-purchase-price">Precio de Compra (€) *</label>
+                        <input type="number" id="field-purchase-price" step="0.01" min="0" required placeholder="0.00" title="Pon 0.00 si es de tu infancia o un regalo">
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-market-price">Precio de Mercado Actual (€) *</label>
+                        <input type="number" id="field-market-price" step="0.01" min="0" required placeholder="0.00">
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-extra-costs">Gastos de Envío / Costes Extra (€)</label>
+                        <input type="number" id="field-extra-costs" step="0.01" min="0" value="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="field-purchase-store">Tienda de Adquisición</label>
+                        <input type="text" id="field-purchase-store" placeholder="ej: ToysRUs, Lego Store">
+                    </div>
+                    <div class="form-group">
+                        <label for="field-purchase-location">Ubicación / Canal</label>
+                        <input type="text" id="field-purchase-location" placeholder="ej: Malaga, Madrid, Online">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Estado físico</label>
+                        <div class="condition-checkboxes">
+                            <label class="cond-toggle" id="cond-sealed-wrap">
+                                <input type="checkbox" id="cond-sealed">
+                                <span class="cond-pill">📦 Precintado</span>
+                            </label>
+                            <label class="cond-toggle">
+                                <input type="checkbox" id="cond-box" checked>
+                                <span class="cond-pill">🗃️ Caja</span>
+                            </label>
+                            <label class="cond-toggle">
+                                <input type="checkbox" id="cond-manual" checked>
+                                <span class="cond-pill">📋 Instrucciones</span>
+                            </label>
+                            <label class="cond-toggle">
+                                <input type="checkbox" id="cond-minifigs" checked>
+                                <span class="cond-pill">👤 Minifigs</span>
+                            </label>
+                            <label class="cond-toggle">
+                                <input type="checkbox" id="cond-complete" checked>
+                                <span class="cond-pill">✅ Completo</span>
+                            </label>
+                        </div>
+                        <!-- hidden field keeps the real condition value -->
+                        <input type="hidden" id="field-condition" value="complete_mib">
+                        <span id="cond-computed-label" class="cond-computed-label">Completo en caja con manual</span>
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-goal">Propósito Financiero *</label>
+                        <select id="field-goal" required>
+                            <option value="investment">Inversión (Especulación)</option>
+                            <option value="collection">Colección Propia</option>
+                            <option value="legacy">Colección Legado</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group col-span-3 set-only-field">
+                        <label for="field-image-url">URL de la Imagen del Set (Dejar en blanco para autocompletar de Brickset)</label>
+                        <input type="text" id="field-image-url" placeholder="https://images.brickset.com/sets/images/...">
+                    </div>
+
+                    <div class="form-group col-span-3">
+                        <label for="field-notes">Notas / Observaciones</label>
+                        <textarea id="field-notes" rows="3" placeholder="Detalles de ofertas, estado físico de la caja, piezas que faltan, etc."></textarea>
+                    </div>
+                </div>
+
+                <!-- Minifig checklist panel (appears after lookup) -->
+                <div id="minifig-checklist-panel" class="minifig-checklist-panel hidden">
+                    <div class="minifig-checklist-header">
+                        <span class="minifig-checklist-title">👥 Minifiguras del set</span>
+                        <span id="minifig-checklist-status" class="minifig-checklist-status"></span>
+                    </div>
+                    <div id="minifig-checklist-loading" class="loading-state hidden">
+                        <div class="spinner"></div><p>Cargando minifiguras…</p>
+                    </div>
+                    <div id="minifig-checklist-grid" class="minifig-checklist-grid"></div>
+                    <p class="minifig-checklist-hint">💡 Desmarca las que <strong>no</strong> estén — se añadirán automáticamente a la Lista de Compras al guardar.</p>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="btn-cancel-modal" class="btn btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Set</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="delete-modal" class="modal-overlay hidden">
+        <div class="modal-container modal-small">
+            <div class="modal-header">
+                <h2>¿Eliminar set de Lego?</h2>
+                <button id="btn-close-delete-modal" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que quieres eliminar el set <strong id="delete-set-name"></strong> (ID: <span id="delete-set-id"></span>)?</p>
+                <p class="warning-text">⚠️ Esta acción no se puede deshacer de forma directa, aunque se creará un backup en la carpeta <code>backups/</code>.</p>
+            </div>
+            <div class="form-actions">
+                <button id="btn-cancel-delete" class="btn btn-secondary">Cancelar</button>
+                <button id="btn-confirm-delete" class="btn btn-danger">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PARTS MANAGEMENT MODAL -->
+    <div id="parts-modal" class="modal-overlay hidden">
+        <div class="modal-container modal-large">
+            <div class="modal-header">
+                <h2>🔧 Gestionar Piezas Faltantes: <span id="parts-modal-set-title"></span></h2>
+                <button id="btn-close-parts-modal" class="modal-close-btn">&times;</button>
+            </div>
+            
+            <div class="parts-modal-tabs">
+                <button id="tab-current-missing" class="parts-tab-btn active">⚠️ Piezas Faltantes actuales</button>
+                <button id="tab-official-inventory" class="parts-tab-btn">🔍 Añadir desde Catálogo Oficial (Rebrickable)</button>
+                <button id="tab-manual-add" class="parts-tab-btn">✏️ Añadir Manualmente</button>
+            </div>
+
+            <div class="parts-modal-content">
+                <!-- Tab 1: Current Missing Pieces -->
+                <div id="pane-current-missing" class="parts-pane">
+                    <div id="current-missing-list" class="parts-list-grid">
+                        <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Tab 2: Official Inventory Selection -->
+                <div id="pane-official-inventory" class="parts-pane hidden">
+                    <div class="inventory-search-bar">
+                        <input type="text" id="inventory-search-input" placeholder="Buscar por código de pieza, nombre o color...">
+                    </div>
+                    <div id="official-inventory-loading" class="loading-state hidden">
+                        <div class="spinner"></div>
+                        <p>Cargando inventario oficial desde Rebrickable...</p>
+                    </div>
+                    <div id="official-inventory-grid" class="parts-inventory-grid">
+                        <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Tab 3: Manual Add Form -->
+                <div id="pane-manual-add" class="parts-pane hidden">
+                    <form id="manual-part-form" class="modal-form">
+                        <div class="form-grid">
+                            <div class="form-group col-span-1">
+                                <label for="field-part-num">Código de Pieza *</label>
+                                <input type="text" id="field-part-num" required placeholder="ej: 3001">
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="field-part-name">Nombre de la Pieza *</label>
+                                <input type="text" id="field-part-name" required placeholder="ej: Brick 2 x 4">
+                            </div>
+                            <div class="form-group col-span-1">
+                                <label for="field-part-color">Color *</label>
+                                <input type="text" id="field-part-color" required placeholder="ej: Red">
+                            </div>
+                            <div class="form-group col-span-1">
+                                <label for="field-part-qty">Cantidad Faltante *</label>
+                                <input type="number" id="field-part-qty" required min="1" value="1">
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="field-part-img">URL de Imagen (Opcional)</label>
+                                <input type="text" id="field-part-img" placeholder="https://...">
+                            </div>
+                        </div>
+                        <div class="form-actions" style="margin-top: 1.5rem;">
+                            <button type="submit" class="btn btn-primary">Añadir Pieza</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="form-actions" style="border-top: 1px solid var(--border-color); padding-top: 1.5rem; margin-top: 1.5rem;">
+                <button id="btn-close-parts-modal-footer" class="btn btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Piece Modal -->
+    <div id="piece-modal" class="modal-overlay hidden">
+        <div class="modal-container piece-modal-wide">
+            <div class="modal-header">
+                <h2 id="piece-modal-title">🧩 Añadir Pieza a Lista de Compras</h2>
+                <button id="btn-close-piece-modal" class="modal-close-btn" aria-label="Cerrar">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Set selector row -->
+                <div class="piece-set-selector-row">
+                    <div class="piece-set-selector-group">
+                        <label>Selecciona un set propio o escribe un ID / MOC</label>
+                        <div class="piece-set-selector-controls">
+                            <select id="piece-owned-set-select">
+                                <option value="">— Mis sets guardados —</option>
+                            </select>
+                            <span class="piece-or-label">o</span>
+                            <input type="text" id="piece-set-id" placeholder="ID manual: 75337, MOC, …">
+                            <button type="button" id="btn-load-set-parts" class="btn btn-primary btn-sm">
+                                🔎 Ver piezas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parts browser panel -->
+                <div id="piece-set-browser" class="piece-set-browser hidden">
+                    <!-- Filter toolbar -->
+                    <div id="piece-set-browser-search-wrap" class="piece-browser-toolbar hidden">
+                        <div class="piece-browser-search-box">
+                            <span class="search-icon-inner">🔍</span>
+                            <input type="text" id="piece-set-search" placeholder="Buscar por nombre o código de pieza…">
+                            <button type="button" id="btn-clear-piece-search" class="btn-icon-sm" title="Limpiar">✕</button>
+                        </div>
+                        <div class="piece-browser-filters">
+                            <div class="piece-filter-group">
+                                <span class="filter-label">Categoría:</span>
+                                <div id="piece-cat-chips" class="filter-chips"></div>
+                            </div>
+                            <div class="piece-filter-group">
+                                <span class="filter-label">Color:</span>
+                                <select id="piece-color-filter" class="filter-select">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <span id="piece-count-label" class="piece-count-label"></span>
+                        </div>
+                    </div>
+
+                    <div id="piece-set-browser-loading" class="loading-state hidden">
+                        <div class="spinner"></div><p>Cargando inventario del set…</p>
+                    </div>
+                    <div id="piece-set-parts-grid" class="parts-inventory-grid"></div>
+                </div>
+
+                <hr class="piece-divider">
+
+                <!-- Manual entry form -->
+                <details class="piece-manual-section">
+                    <summary>✏️ O añade una pieza manualmente</summary>
+                    <form id="piece-form" class="modal-form" style="margin-top:0.75rem; padding: 0;">
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                            <div class="form-group">
+                                <label for="piece-part-num">Código de Pieza *</label>
+                                <input type="text" id="piece-part-num" required placeholder="ej: 3001">
+                            </div>
+                            <div class="form-group">
+                                <label for="piece-color">Color *</label>
+                                <input type="text" id="piece-color" required placeholder="ej: Dark Bluish Gray">
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="piece-part-name">Nombre de la Pieza *</label>
+                                <input type="text" id="piece-part-name" required placeholder="ej: Brick 2x4">
+                            </div>
+                            <div class="form-group">
+                                <label for="piece-qty">Cantidad *</label>
+                                <input type="number" id="piece-qty" required min="1" value="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="piece-img">URL Imagen (Opcional)</label>
+                                <input type="text" id="piece-img" placeholder="https://…">
+                            </div>
+                        </div>
+                        <div class="form-actions" style="margin-top:1rem;">
+                            <button type="button" id="btn-cancel-piece" class="btn btn-secondary">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Añadir a Lista</button>
+                        </div>
+                    </form>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=1.1.0"></script>
+</body>
+</html>
