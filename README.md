@@ -239,7 +239,7 @@ Una vez iniciado, abre tu navegador web favorito y accede a:
 
 ---
 
-## aparado vacío
+## Nota para el Inicio Vacío
 
 El repositorio viene configurado para **iniciar completamente vacío**, listo para que añadas tu propia colección:
 *   En el primer inicio de la aplicación, el backend detectará que no existen bases de datos locales y creará automáticamente los archivos `legos.csv` y `missing_pieces.csv` vacíos con las cabeceras correctas.
