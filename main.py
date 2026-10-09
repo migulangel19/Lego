@@ -6,6 +6,7 @@ import re
 import urllib.request
 import io
 import json
+import threading
 from PIL import Image
 from typing import Literal, Optional
 from fastapi import FastAPI, HTTPException, status, BackgroundTasks
@@ -202,6 +203,46 @@ def write_csv(records: list[dict]):
             })
 
 
+def make_background_transparent(img: Image.Image, threshold: int = 240) -> Image.Image:
+    """
+    Makes the white background transparent by flood-filling from the image borders.
+    Only near-white pixels connected to the edges are removed, so white parts inside
+    the model (stormtrooper armour, clone troopers, sails...) are preserved.
+    """
+    img = img.convert("RGBA")
+    width, height = img.size
+    pixels = img.load()
+
+    def is_bg(x: int, y: int) -> bool:
+        r, g, b, a = pixels[x, y]
+        return a == 0 or (r > threshold and g > threshold and b > threshold)
+
+    visited = bytearray(width * height)
+    stack = []
+    for x in range(width):
+        stack.append((x, 0))
+        stack.append((x, height - 1))
+    for y in range(height):
+        stack.append((0, y))
+        stack.append((width - 1, y))
+
+    while stack:
+        x, y = stack.pop()
+        idx = y * width + x
+        if visited[idx]:
+            continue
+        visited[idx] = 1
+        if not is_bg(x, y):
+            continue
+        pixels[x, y] = (255, 255, 255, 0)
+        if x > 0: stack.append((x - 1, y))
+        if x < width - 1: stack.append((x + 1, y))
+        if y > 0: stack.append((x, y - 1))
+        if y < height - 1: stack.append((x, y + 1))
+
+    return img
+
+
 # --- On Startup Backup Hook ---
 @app.on_event("startup")
 def startup_event():
@@ -232,17 +273,8 @@ def process_and_save_image(lego_id: str, image_url: str) -> str:
         with urllib.request.urlopen(req) as response:
             img_data = response.read()
             
-        img = Image.open(io.BytesIO(img_data)).convert("RGBA")
-        datas = img.getdata()
-        newData = []
-        for item in datas:
-            # If the pixel is close to white (R > 245, G > 245, B > 245), make it transparent
-            if item[0] > 245 and item[1] > 245 and item[2] > 245:
-                newData.append((255, 255, 255, 0))
-            else:
-                newData.append(item)
-        img.putdata(newData)
-        
+        img = make_background_transparent(Image.open(io.BytesIO(img_data)), threshold=245)
+
         os.makedirs("public/images", exist_ok=True)
         dest_path = f"public/images/{lego_id}.png"
         img.save(dest_path, "PNG")
@@ -299,17 +331,8 @@ def process_minifig_image(code: str, source_url: str) -> str:
         with urllib.request.urlopen(req, timeout=10) as response:
             img_data = response.read()
             
-        img = Image.open(io.BytesIO(img_data)).convert("RGBA")
-        datas = img.getdata()
-        newData = []
-        for item in datas:
-            # If the pixel is close to white (R > 240, G > 240, B > 240), make it transparent
-            if item[0] > 240 and item[1] > 240 and item[2] > 240:
-                newData.append((255, 255, 255, 0))
-            else:
-                newData.append(item)
-        img.putdata(newData)
-        
+        img = make_background_transparent(Image.open(io.BytesIO(img_data)), threshold=240)
+
         os.makedirs("public/images/minifigs", exist_ok=True)
         img.save(dest_path, "PNG")
         print(f"Processed minifig image for {code} and saved to {dest_path}")
@@ -426,6 +449,17 @@ def fetch_minifigures_hybrid(set_id: str) -> list:
             print(f"Rebrickable API failed for set {set_id}: {e}")
             
     return []
+
+
+# BrickLink codes (sw0001c, poc014...) are preferred over Rebrickable's (fig-XXXXXX) because
+# BrickEconomy and BrickLink use them. Sets cached from the Rebrickable fallback retry Brickset
+# once per server run, so a past temporary Brickset failure doesn't stick forever.
+_brickset_retried: set = set()
+_minifigs_cache_lock = threading.Lock()
+
+
+def needs_bricklink_codes(figs: list) -> bool:
+    return any(f.get("code", "").startswith("fig-") for f in figs)
 
 
 def load_minifigs_cache() -> dict:
@@ -685,11 +719,7 @@ def lookup_set_on_rebrickable(set_id: str, api_key: str) -> dict:
 
 def warmup_minifigs(set_id: str):
     try:
-        cache = load_minifigs_cache()
-        if set_id not in cache:
-            minifigs = fetch_minifigures_hybrid(set_id)
-            cache[set_id] = minifigs
-            save_minifigs_cache(cache)
+        update_minifigs_cache([{"id": set_id}])
     except Exception as e:
         print(f"Error warming up minifigures cache for set {set_id}: {e}")
 
@@ -832,26 +862,45 @@ def update_parts_cost(lego_id: str, update: PartsCostUpdate):
     )
 
 
+def update_minifigs_cache(sets: list[dict]) -> dict:
+    """
+    Makes sure every owned set has its minifigures cached and returns the cache.
+    Runs under a lock: concurrent requests used to load, update and save the whole
+    file in parallel, so the last writer silently discarded the other's updates.
+    """
+    with _minifigs_cache_lock:
+        cache = load_minifigs_cache()
+        cache_updated = False
+        for s in sets:
+            set_id = s["id"]
+            # If it is a loose minifigure, do not fetch set details from API/scraper
+            is_loose = s.get("subcategory") == "Loose Minifigure" or set_id.startswith("sw") or set_id.startswith("fig")
+            if is_loose:
+                continue
+
+            if set_id not in cache:
+                cache[set_id] = fetch_minifigures_hybrid(set_id)
+                cache_updated = True
+            elif needs_bricklink_codes(cache[set_id]) and set_id not in _brickset_retried:
+                _brickset_retried.add(set_id)
+                try:
+                    print(f"Set {set_id} has Rebrickable codes; retrying Brickset to get BrickLink codes...")
+                    res = fetch_from_brickset(set_id)
+                    if res:
+                        cache[set_id] = res
+                        cache_updated = True
+                except Exception as e:
+                    print(f"Brickset retry failed for set {set_id}: {e}")
+        if cache_updated:
+            save_minifigs_cache(cache)
+        return cache
+
+
 @app.get("/api/minifigs")
 def get_minifigures():
     sets = read_csv()
-    cache = load_minifigs_cache()
-    
-    cache_updated = False
-    for s in sets:
-        set_id = s["id"]
-        # If it is a loose minifigure, do not fetch set details from API/scraper
-        is_loose = s.get("subcategory") == "Loose Minifigure" or set_id.startswith("sw") or set_id.startswith("fig")
-        if is_loose:
-            continue
-            
-        if set_id not in cache:
-            minifigs = fetch_minifigures_hybrid(set_id)
-            cache[set_id] = minifigs
-            cache_updated = True
-    if cache_updated:
-        save_minifigs_cache(cache)
-        
+    cache = update_minifigs_cache(sets)
+
     # Consolidate and aggregate minifigures across all owned sets and loose figures
     # Mapping to unify identical minifigures with different database codes
     MINIFIG_MAPPING = {
@@ -978,8 +1027,26 @@ def save_set_minifigs_cache(cache: dict):
 
 @app.get("/api/sets/{set_id}/minifigs")
 def get_set_minifigs(set_id: str):
-    """Fetch the minifigures included in a set from Rebrickable (with cache)."""
+    """Fetch the minifigures included in a set: Brickset first (BrickLink codes), Rebrickable as fallback (with cache)."""
     cache = load_set_minifigs_cache()
+    if set_id in cache and not any(f.get("fig_num", "").startswith("fig-") for f in cache[set_id]):
+        return cache[set_id]
+
+    try:
+        brickset_figs = fetch_from_brickset(set_id)
+    except Exception as e:
+        print(f"Brickset scraping failed for set {set_id}: {e}. Falling back to Rebrickable...")
+        brickset_figs = []
+    if brickset_figs:
+        results = [{
+            "fig_num": f["code"],
+            "name": f["name"],
+            "quantity": f["quantity"],
+            "img_url": f["image_url"],
+        } for f in brickset_figs]
+        cache[set_id] = results
+        save_set_minifigs_cache(cache)
+        return results
     if set_id in cache:
         return cache[set_id]
 
@@ -1249,20 +1316,26 @@ import urllib.parse
 
 # --- Goals (Objetivos) Domain ---
 GOALS_JSON = "goals.json"
+DEFAULT_GOAL_FOLDER = "Consejo Jedi"
 
 class Goal(BaseModel):
     id: str = Field(..., description="Set ID or Minifigure ID")
     name: str = Field(..., description="Name of the set or minifigure")
     type: Literal['set', 'minifig', 'folder'] = Field(..., description="Type of the goal")
     image_url: str = Field(default="", description="Image URL")
-    folder: str = Field(default="Consejo Jedi", description="Folder/Category for this goal")
+    folder: str = Field(default=DEFAULT_GOAL_FOLDER, description="Folder/Category for this goal")
     set_info: str = Field(default="", description="Information about sets and years")
 
 def load_goals() -> list[dict]:
     if os.path.exists(GOALS_JSON):
         try:
             with open(GOALS_JSON, "r", encoding="utf-8") as f:
-                return json.load(f)
+                goals = json.load(f)
+            # Goals saved before folders existed have no "folder" key: they belong to the default one
+            for g in goals:
+                if not g.get("folder"):
+                    g["folder"] = DEFAULT_GOAL_FOLDER
+            return goals
         except Exception:
             pass
     return []
@@ -1278,11 +1351,26 @@ def get_goals():
 @app.post("/api/goals", status_code=status.HTTP_201_CREATED)
 def add_goal(goal: Goal):
     goals = load_goals()
-    if any(g["id"] == goal.id for g in goals):
-        raise HTTPException(status_code=400, detail="Goal already exists")
+    existing = next((g for g in goals if g["id"] == goal.id), None)
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Ya está en tus objetivos (carpeta «{existing.get('folder', '')}»)")
     goals.append(goal.dict())
     save_goals(goals)
     return goal
+
+class GoalUpdate(BaseModel):
+    folder: str = Field(..., min_length=1, description="New folder for the goal")
+
+@app.patch("/api/goals/{goal_id}")
+def update_goal(goal_id: str, update: GoalUpdate):
+    """Moves a goal to another folder."""
+    goals = load_goals()
+    for g in goals:
+        if g["id"] == goal_id:
+            g["folder"] = update.folder.strip()
+            save_goals(goals)
+            return g
+    raise HTTPException(status_code=404, detail="Goal not found")
 
 @app.delete("/api/goals/{goal_id}")
 def delete_goal(goal_id: str):
@@ -1346,6 +1434,16 @@ def get_sets_for_minifig(minifig_id: str):
         raise HTTPException(status_code=502, detail=f"Rebrickable API error: {e}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Rebrickable API error: {e}")
+
+
+# Ask the browser to revalidate the frontend files on every load (cheap 304s via ETag),
+# so a page never mixes a new index.html with an old cached style.css / app.js.
+@app.middleware("http")
+async def no_cache_frontend(request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 # --- Static Files / Frontend Hosting ---

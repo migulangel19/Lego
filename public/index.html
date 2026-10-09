@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BrickControl - Lego Portfolio Tracker</title>
+    <link rel="icon" type="image/png" href="images/logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.1.0">
+    <link rel="stylesheet" href="style.css?v=1.12.0">
 </head>
 <body>
     <div class="app-container">
@@ -259,6 +260,18 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Set subtheme filter (only visible in the sets view) -->
+            <div id="subtheme-filter" class="faction-filter hidden">
+                <span class="filter-label">Subtema:</span>
+                <div id="subtheme-chips" class="filter-chips faction-chips"></div>
+            </div>
+
+            <!-- Minifigure faction filter (only visible in the minifigures view) -->
+            <div id="faction-filter" class="faction-filter hidden">
+                <span class="filter-label">Bandos Star Wars:</span>
+                <div id="faction-chips" class="filter-chips faction-chips"></div>
+            </div>
         </section>
 
         <!-- Main Sets Grid -->
@@ -295,28 +308,36 @@
 
 
             <div id="goals-view" class="goals-view hidden">
-                <div class="toolbar-section" style="margin-top: 0;">
-                    <div style="display: flex; gap: 10px; width: 100%;">
-                        <div class="search-box" style="flex-grow: 1;">
-                            <span class="search-icon">🔍</span>
-                            <input type="text" id="goals-search-input" placeholder="Buscar figura en Rebrickable (ej: Mace Windu)...">
-                        </div>
-                        <button id="btn-search-goals" class="btn btn-primary">Buscar</button>
-                        <button id="btn-clear-goals" class="btn btn-secondary">Limpiar</button>
+                <!-- Search for minifigures to add as goals -->
+                <form id="goals-search-form" class="goals-search">
+                    <div class="search-box goals-search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="goals-search-input" placeholder="Busca una minifigura para añadirla a tus objetivos (ej: Mace Windu)…" autocomplete="off">
                     </div>
-                </div>
-                
-                <div id="goals-search-results" class="hidden" style="margin-bottom: 30px;">
-                    <!-- Search results here -->
-                </div>
+                    <button type="submit" id="btn-search-goals" class="btn btn-primary">Buscar</button>
+                </form>
 
-                <div class="kpi-group-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2>Tus Objetivos</h2>
-                    <button class="btn btn-primary" onclick="createEmptyFolder()">📁 Crear Carpeta</button>
-                </div>
-                <div id="goals-folders-container" style="display: flex; flex-direction: column; gap: 30px;">
-                    <!-- Folders rendered dynamically here -->
-                </div>
+                <section id="goals-search-results" class="goals-results hidden">
+                    <div class="goals-section-header">
+                        <h2 id="goals-results-title">Resultados</h2>
+                        <button type="button" id="btn-clear-goals" class="btn btn-secondary btn-sm">✕ Cerrar resultados</button>
+                    </div>
+                    <p class="goals-hint">Pulsa una figura para ver en qué sets aparece y añadirla a una carpeta.</p>
+                    <div id="goals-search-grid" class="goals-grid"></div>
+                </section>
+
+                <section class="goals-saved">
+                    <div class="goals-section-header">
+                        <h2>🎯 Tus objetivos <span id="goals-total-count" class="goals-count"></span></h2>
+                        <button type="button" id="btn-new-folder" class="btn btn-secondary btn-sm">📁 Nueva carpeta</button>
+                    </div>
+                    <form id="new-folder-form" class="new-folder-form hidden">
+                        <input type="text" id="new-folder-input" placeholder="Nombre de la carpeta (ej: Consejo Jedi, Villanos…)" maxlength="60" autocomplete="off">
+                        <button type="submit" class="btn btn-primary btn-sm">Crear</button>
+                        <button type="button" id="btn-cancel-new-folder" class="btn btn-secondary btn-sm">Cancelar</button>
+                    </form>
+                    <div id="goals-folders-container" class="goals-folders"></div>
+                </section>
             </div>
 
             <div id="empty-state" class="empty-state hidden">
@@ -493,6 +514,59 @@
             <div class="form-actions">
                 <button id="btn-cancel-delete" class="btn btn-secondary">Cancelar</button>
                 <button id="btn-confirm-delete" class="btn btn-danger">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SET DETAIL MODAL (ficha del set) -->
+    <div id="set-detail-modal" class="modal-overlay hidden">
+        <div class="modal-container piece-detail-container">
+            <div class="modal-header piece-detail-header">
+                <div class="piece-detail-title-group">
+                    <span class="piece-detail-kicker" id="set-detail-kicker">SET</span>
+                    <h2 id="set-detail-title"></h2>
+                </div>
+                <button id="btn-close-set-detail" class="modal-close-btn" aria-label="Cerrar">&times;</button>
+            </div>
+
+            <div class="modal-body piece-detail-body">
+                <div class="piece-detail-layout">
+                    <div class="piece-detail-visual">
+                        <div class="piece-detail-img-box">
+                            <span id="set-detail-id-badge" class="piece-detail-code-badge"></span>
+                            <img id="set-detail-image" class="piece-detail-large-img" src="images/placeholder.png" alt="">
+                        </div>
+                        <div id="set-detail-tags" class="set-card-tags"></div>
+                        <div id="set-detail-links" class="set-card-links"></div>
+                    </div>
+
+                    <div class="piece-detail-info">
+                        <div class="piece-detail-card">
+                            <h3 class="piece-card-heading">💶 Valoración</h3>
+                            <div id="set-detail-money" class="set-detail-rows"></div>
+                        </div>
+                        <div class="piece-detail-card">
+                            <h3 class="piece-card-heading">📋 Datos</h3>
+                            <div id="set-detail-info" class="piece-specs-grid"></div>
+                        </div>
+                        <div class="piece-detail-card" id="set-detail-notes-card">
+                            <h3 class="piece-card-heading">📝 Notas</h3>
+                            <p id="set-detail-notes" class="set-detail-notes"></p>
+                        </div>
+                        <div class="piece-detail-card" id="set-detail-figs-card">
+                            <h3 class="piece-card-heading">👥 Minifiguras del set</h3>
+                            <div id="set-detail-figs" class="set-detail-figs"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer piece-detail-footer">
+                <button type="button" id="set-detail-btn-delete" class="btn btn-danger">🗑️ Borrar</button>
+                <div class="set-detail-footer-actions">
+                    <button type="button" id="set-detail-btn-parts" class="btn btn-secondary">🔧 Piezas</button>
+                    <button type="button" id="set-detail-btn-edit" class="btn btn-primary">✏️ Editar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -831,57 +905,113 @@
     </div>
 
     
-    <!-- Goal Detail Modal -->
+    <!-- GOAL MODAL: add a new goal (choose what + folder) or manage a saved one -->
     <div id="goal-detail-modal" class="modal-overlay hidden" style="z-index: 1100;">
-        <div class="modal-container piece-detail-container" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-container piece-detail-container goal-modal">
             <div class="modal-header piece-detail-header">
                 <div class="piece-detail-title-group">
-                    <span class="piece-detail-kicker" id="goal-detail-type">OBJETIVO / MINIFIGURA</span>
-                    <h2 id="goal-detail-title">Nombre del Objetivo</h2>
+                    <span class="piece-detail-kicker" id="goal-detail-type">AÑADIR OBJETIVO</span>
+                    <h2 id="goal-detail-title"></h2>
                 </div>
                 <button id="btn-close-goal-detail" class="modal-close-btn" aria-label="Cerrar">&times;</button>
             </div>
 
             <div class="modal-body piece-detail-body">
                 <div class="piece-detail-layout">
-                    <!-- Left Column: Large Image Presentation -->
-                    <div class="piece-detail-visual" style="flex: 0 0 300px;">
+                    <div class="piece-detail-visual">
                         <div class="piece-detail-img-box">
-                            <span id="goal-detail-id-badge" class="piece-detail-code-badge">#----</span>
-                            <img id="goal-detail-image" src="images/placeholder.png" alt="Objetivo" class="piece-detail-large-img" style="object-fit: contain; max-height: 300px;">
+                            <span id="goal-detail-id-badge" class="piece-detail-code-badge"></span>
+                            <img id="goal-detail-image" src="images/placeholder.png" alt="" class="piece-detail-large-img">
                         </div>
-                        <div class="piece-external-grid" style="margin-top: 15px;">
-                            <a id="goal-detail-rebrickable-link" href="#" target="_blank" class="btn-market-link">
-                                <div class="market-info">
-                                    <span class="market-name">Rebrickable</span>
-                                </div>
-                            </a>
-                            <a id="goal-detail-bricklink-link" href="#" target="_blank" class="btn-market-link link-bricklink">
-                                <div class="market-info">
-                                    <span class="market-name">BrickLink</span>
-                                </div>
-                            </a>
-                            <a id="goal-detail-brickeconomy-link" href="#" target="_blank" class="btn-market-link" style="border-left: 4px solid #28a745;">
-                                <div class="market-info">
-                                    <span class="market-name">BrickEconomy</span>
-                                </div>
-                            </a>
+                        <div class="set-card-links">
+                            <a id="goal-detail-brickeconomy-link" href="#" target="_blank" rel="noopener" class="set-link link-be">📈 BrickEconomy</a>
+                            <a id="goal-detail-bricklink-link" href="#" target="_blank" rel="noopener" class="set-link link-bl">BrickLink</a>
+                            <a id="goal-detail-rebrickable-link" href="#" target="_blank" rel="noopener" class="set-link link-rb">Rebrickable</a>
                         </div>
                     </div>
 
-                    <!-- Right Column: Sets -->
-                    <div class="piece-detail-info" style="flex: 1;">
-                        <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Sets en los que aparece</h3>
-                        <div id="goal-detail-sets-loading" class="spinner hidden"></div>
-                        <div id="goal-detail-sets-grid" class="parts-inventory-grid">
-                            <!-- Sets dynamically populated here -->
+                    <div class="piece-detail-info">
+                        <!-- Step 1: what to get (loose figure or one of the sets it appears in) -->
+                        <div class="goal-step">
+                            <h3 class="goal-step-title"><span class="goal-step-num">1</span> <span id="goal-step1-title">¿Qué quieres conseguir?</span></h3>
+                            <div id="goal-detail-sets-loading" class="loading-inline hidden"><div class="spinner"></div><span>Buscando sets en Rebrickable…</span></div>
+                            <div id="goal-detail-sets-grid" class="goal-options"></div>
+                        </div>
+
+                        <!-- Step 2: folder -->
+                        <div class="goal-step">
+                            <h3 class="goal-step-title"><span class="goal-step-num">2</span> Carpeta</h3>
+                            <div class="goal-folder-picker">
+                                <select id="goal-folder-select"></select>
+                                <input type="text" id="goal-new-folder-input" class="hidden" placeholder="Nombre de la nueva carpeta" maxlength="60" autocomplete="off">
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="modal-footer piece-detail-footer">
+                <button type="button" id="goal-btn-delete" class="btn btn-danger hidden">🗑️ Eliminar objetivo</button>
+                <span class="goal-footer-spacer"></span>
+                <div class="set-detail-footer-actions">
+                    <button type="button" id="goal-btn-cancel" class="btn btn-secondary">Cancelar</button>
+                    <button type="button" id="goal-btn-save" class="btn btn-primary">🎯 Añadir objetivo</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="app.js?v=1.2.0"></script>
+    <!-- SPENDING BREAKDOWN MODAL (opened from the "Total gastado" KPI) -->
+    <div id="spend-modal" class="modal-overlay hidden">
+        <div class="modal-container piece-detail-container spend-modal">
+            <div class="modal-header piece-detail-header">
+                <div class="piece-detail-title-group">
+                    <span class="piece-detail-kicker">DESGLOSE DE GASTOS</span>
+                    <h2>¿En qué me he gastado el dinero?</h2>
+                </div>
+                <button id="btn-close-spend" class="modal-close-btn" aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body piece-detail-body">
+                <div id="spend-summary" class="spend-summary"></div>
+                <div id="spend-stores" class="spend-stores"></div>
+                <div class="spend-table-wrap">
+                    <table class="spend-table">
+                        <thead>
+                            <tr>
+                                <th>Set</th>
+                                <th>Compra</th>
+                                <th>Tienda</th>
+                                <th class="num">Precio</th>
+                                <th class="num">Envío / comisiones</th>
+                                <th class="num">Repuestos</th>
+                                <th class="num">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="spend-table-body"></tbody>
+                        <tfoot id="spend-table-foot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GENERIC CONFIRM DIALOG (replaces the browser's confirm()) -->
+    <div id="confirm-modal" class="modal-overlay hidden" style="z-index: 1200;">
+        <div class="modal-container modal-small confirm-dialog">
+            <div class="modal-header">
+                <h2 id="confirm-title">¿Seguro?</h2>
+                <button type="button" class="modal-close-btn" id="confirm-close" aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message"></p>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="confirm-cancel" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="confirm-ok" class="btn btn-danger">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=1.14.0"></script>
 </body>
 </html>

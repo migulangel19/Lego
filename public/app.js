@@ -9,6 +9,138 @@ let editingLegoId = null;
 let deletingLegoId = null;
 let currentSetMinifigs = [];
 
+// --- Helpers ---
+// Escape text for safe insertion into HTML (names, notes...)
+function esc(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Encode a value as a JS argument inside an inline handler: onclick="fn(${jsArg(x)})"
+function jsArg(value) {
+    return esc(JSON.stringify(String(value ?? '')));
+}
+
+// Normalise a theme name into one of the category keys used by the UI
+function themeKey(theme) {
+    const t = (theme || '').toLowerCase();
+    if (t.includes('star wars') || t.includes('starwars')) return 'starwars';
+    if (t.includes('batman')) return 'batman';
+    if (t.includes('pirate') || t.includes('pirata')) return 'pirates';
+    if (t.includes('harry potter') || t.includes('harrypotter')) return 'harrypotter';
+    return 'other';
+}
+
+// Map the category card data-theme value to a theme key
+const THEME_FILTER_KEYS = {
+    'Star Wars': 'starwars',
+    'Batman': 'batman',
+    'Pirates of the Caribbean': 'pirates',
+    'Harry Potter': 'harrypotter',
+    'other': 'other'
+};
+
+function matchesThemeFilter(theme) {
+    if (activeThemeFilter === 'all') return true;
+    return themeKey(theme) === THEME_FILTER_KEYS[activeThemeFilter];
+}
+
+const STATUS_INFO = {
+    needed: { label: 'Necesitada', badge: 'badge-needed' },
+    ordered: { label: 'Pedida', badge: 'badge-ordered' },
+    received: { label: 'Recibida', badge: 'badge-received' }
+};
+
+// --- Star Wars minifigure factions ---
+// Only Star Wars figures are classified. Computed on the fly from the figure's name, never
+// stored: any new figure is classified automatically. Order matters, first match wins (e.g. Sith before Jedi so
+// Darth Vader isn't a Jedi; bounty hunters before Mandalorians so Boba Fett is a hunter).
+// A figure whose name matches no keyword falls into "Otros": add the keyword here.
+const FACTIONS = [
+    { key: 'pirates', label: 'Piratas', icon: '🏴‍☠️',
+      words: ['pirate', 'pirata', 'hondo', 'kragan', 'brutus'] },
+    { key: 'sith', label: 'Sith', icon: '🔴',
+      words: ['darth', 'vader', 'sidious', 'palpatine', 'emperor', 'dooku', 'maul', 'ventress', 'savage opress',
+              'inquisitor', 'sith', 'drk-1', 'kylo ren'] },
+    { key: 'bountyhunters', label: 'Cazarrecompensas', icon: '🎯',
+      words: ['bounty hunter', 'boba fett', 'jango fett', 'bossk', 'ig-88', 'ig-11', 'dengar', 'greedo',
+              'cad bane', 'aurra sing', 'embo', 'zuckuss', '4-lom', 'fennec', 'bazine'] },
+    { key: 'commanders', label: 'Comandantes', icon: '🎖️',
+      words: ['commander', 'captain rex', 'cody', 'wolffe', 'bly', 'gree', 'bacara', 'fox', 'neyo', 'appo',
+              'echo', 'fives', 'hevy', 'kix', 'jesse', 'clone captain', 'arc trooper', 'arf trooper'] },
+    { key: 'clones', label: 'Clones', icon: '🪖', words: ['clone', 'bad batch'] },
+    { key: 'jedi', label: 'Jedi', icon: '🟢',
+      words: ['jedi', 'obi-wan', 'anakin', 'ahsoka', 'mace windu', 'yoda', 'plo koon', 'qui-gon', 'luke skywalker',
+              'kit fisto', 'shaak ti', 'ki-adi-mundi', 'saesee tiin', 'eeth koth', 'luminara', 'barriss',
+              'aayla', 'kelleran beq', 'even piell', 'adi gallia', 'agen kolar', 'depa billaba', 'cal kestis',
+              'rey', 'ezra', 'kanan'] },
+    { key: 'astromechs', label: 'Astromecánicos', icon: '🔵',
+      words: ['astromech', 'r2-d2', 'r2-', 'r4-', 'r5-', 'r7-', 'r8-', 'bb-8', 'chopper'] },
+    { key: 'separatists', label: 'Droides separatistas', icon: '🤖',
+      words: ['battle droid', 'droideka', 'destroyer droid', 'spider droid', 'commando droid', 'tactical droid',
+              'buzz droid', 'grievous', 'magnaguard', 'nute gunray', 'separatist'] },
+    { key: 'empire', label: 'Imperio', icon: '⚫',
+      words: ['stormtrooper', 'snowtrooper', 'sandtrooper', 'scout trooper', 'shadow trooper', 'tie pilot',
+              'tie fighter pilot', 'imperial', 'death star', 'sentry droid', 'tarkin', 'death trooper'] },
+    { key: 'mandalorians', label: 'Mandalorianos', icon: '🛡️',
+      words: ['mandalorian', 'death watch', 'pre vizsla', 'bo-katan', 'din djarin', 'din grogu', 'grogu',
+              'the child', 'armorer', 'sabine'] },
+    { key: 'senators', label: 'Senadores', icon: '🏛️',
+      words: ['senator', 'senate', 'chancellor', 'amidala', 'padmé', 'padme', 'bail organa', 'mon mothma',
+              'jar jar', 'mas amedda', 'riyo chuchi', 'onaconda farr'] },
+    { key: 'rebels', label: 'Rebeldes', icon: '✊',
+      words: ['rebel', 'resistance', 'leia', 'han solo', 'chewbacca', 'lando', 'wedge', 'biggs', 'ackbar',
+              'x-wing pilot', 'y-wing pilot', 'a-wing pilot', 'hoth', 'cassian', 'jyn erso', 'hera', 'c-3po',
+              'poe dameron', 'finn'] }
+];
+const OTHER_FACTION = { key: 'other', label: 'Otros', icon: '🧩' };
+
+// Returns the faction key for a Star Wars figure, or null for any other theme
+function minifigFaction(name, theme) {
+    if (themeKey(theme) !== 'starwars') return null;
+    // "Clone Wars" is an era, not a faction (e.g. "Obi-Wan Kenobi - Clone Wars")
+    const n = (name || '').toLowerCase().replace(/clone wars/g, '');
+    // Match whole words/phrases so "fox" doesn't match "foxtrot" and "rey" doesn't match "grey".
+    // Boundaries only apply on letter edges, so prefixes like "r2-" still match "r2-d2".
+    const hasWord = (w) => {
+        const body = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const start = /^[a-z]/.test(w) ? '(^|[^a-z])' : '';
+        const end = /[a-z]$/.test(w) ? '($|[^a-z])' : '';
+        return new RegExp(start + body + end).test(n);
+    };
+    const match = FACTIONS.find(f => f.words.some(hasWord));
+    return match ? match.key : OTHER_FACTION.key;
+}
+
+let activeFactionFilter = 'all';
+let activeSubthemeFilter = 'all';
+
+// External catalogue links for a minifigure. Codes come from two catalogues: Rebrickable
+// ("fig-XXXXXX") or BrickLink ("sw0001c"...). Link straight to the item where the code is
+// native, and fall back to a name search on the other sites.
+function minifigCatalogLinks(code, name) {
+    const isRebrickable = code.startsWith('fig-');
+    const c = encodeURIComponent(code);
+    const n = encodeURIComponent(name);
+    return {
+        bricklink: isRebrickable
+            ? `https://www.bricklink.com/v2/search.page?q=${n}`
+            : `https://www.bricklink.com/v2/catalog/catalogitem.page?M=${c}`,
+        rebrickable: isRebrickable
+            ? `https://rebrickable.com/minifigs/${c}/`
+            : `https://rebrickable.com/search/?show_printed=on&search_type=minifig&q=${n}`,
+        brickeconomy: `https://www.brickeconomy.com/search?query=${isRebrickable ? n : c}`
+    };
+}
+
+function pluralSets(n) {
+    return `${n} ${n === 1 ? 'set' : 'sets'}`;
+}
+
 
 // --- DOM Elements ---
 const setsGrid = document.getElementById('sets-grid');
@@ -416,33 +548,15 @@ function updateKPIs() {
 function updateCategoryCounts() {
     // Only count actual sets, excluding loose minifigures
     const actualSets = legoSets.filter(s => s.subcategory !== 'Loose Minifigure');
-    let allCount = actualSets.length;
-    let swCount = 0;
-    let batCount = 0;
-    let pirCount = 0;
-    let hpCount = 0;
-    let otherCount = 0;
-    
-    actualSets.forEach(set => {
-        const themeLower = set.theme.toLowerCase();
-        if (themeLower.includes('star wars') || themeLower.includes('starwars')) {
-            swCount++;
-        } else if (themeLower.includes('batman')) {
-            batCount++;
-        } else if (themeLower.includes('pirate') || themeLower.includes('pirata')) {
-            pirCount++;
-        } else if (themeLower.includes('harry potter') || themeLower.includes('harrypotter')) {
-            hpCount++;
-        } else {
-            otherCount++;
-        }
-    });
-    
-    if (countAll) countAll.innerText = `${allCount} ${allCount === 1 ? 'set' : 'sets'}`;
-    if (countSw) countSw.innerText = `${swCount} ${swCount === 1 ? 'set' : 'sets'}`;
-    if (countBat) countBat.innerText = `${batCount} ${batCount === 1 ? 'set' : 'sets'}`;
-    if (countPir) countPir.innerText = `${pirCount} ${pirCount === 1 ? 'set' : 'sets'}`;
-    if (countOther) countOther.innerText = `${otherCount} ${otherCount === 1 ? 'sets' : 'sets'}`;
+    const counts = { starwars: 0, batman: 0, pirates: 0, harrypotter: 0, other: 0 };
+    actualSets.forEach(set => counts[themeKey(set.theme)]++);
+
+    if (countAll) countAll.innerText = pluralSets(actualSets.length);
+    if (countSw) countSw.innerText = pluralSets(counts.starwars);
+    if (countBat) countBat.innerText = pluralSets(counts.batman);
+    if (countPir) countPir.innerText = pluralSets(counts.pirates);
+    if (countHp) countHp.innerText = pluralSets(counts.harrypotter);
+    if (countOther) countOther.innerText = pluralSets(counts.other);
 }
 
 function updateHeroBanner() {
@@ -486,194 +600,339 @@ function updateHeroBanner() {
     }
 }
 
+// --- Set helpers (shared by the cards and the set detail modal) ---
+const CONDITION_LABELS = {
+    sealed: '📦 Precintado',
+    complete_mib: '🗃️ Completo con caja',
+    complete_loose: '🧱 Completo sin caja',
+    no_manual: '📖 Sin instrucciones',
+    no_box_no_manual: '🧱 Sin caja ni manual',
+    no_minifigs: '👥 Sin minifiguras',
+    incomplete_with_minifigs: '⚠️ Incompleto (con figuras)',
+    incomplete_no_minifigs: '⚠️ Incompleto'
+};
+
+const GOAL_LABELS = {
+    investment: '📈 Inversión',
+    collection: '✨ Colección',
+    legacy: '👑 Legado'
+};
+
+const eurFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+function fmtEur(value) {
+    return eurFormatter.format(Number(value) || 0);
+}
+
+function setImageUrl(set) {
+    // Local processed image when empty or pointing to Brickset
+    return (!set.image_url || set.image_url.includes('brickset.com')) ? `images/${set.id}.png` : set.image_url;
+}
+
+function setLinks(set) {
+    return {
+        brickeconomy: `https://www.brickeconomy.com/search?query=${encodeURIComponent(set.id)}`,
+        bricklink: `https://www.bricklink.com/v2/catalog/catalogitem.page?S=${encodeURIComponent(set.id)}-1`,
+        lego: set.official_url || `https://www.lego.com/es-es/search?q=${encodeURIComponent(set.id)}`
+    };
+}
+
+// Money breakdown and the "result" line shown on the card:
+// legacy -> family heirloom, investment -> gain vs total cost, collection -> saving vs RRP
+function setFinancials(set) {
+    const extra = parseFloat(set.extra_costs) || 0;
+    const parts = parseFloat(set.parts_cost) || 0;
+    const totalCost = set.purchase_price + extra + parts;
+    const saved = set.retail_price - set.purchase_price;
+    const savingPct = set.retail_price > 0 ? (saved / set.retail_price) * 100 : 0;
+    const profit = set.market_price - totalCost;
+    const roiPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+    // Bought more than 5 years after retirement: comparing with the original RRP is meaningless
+    let boughtRetired = false;
+    if (set.purchase_date && set.retirement_date && set.retirement_date !== 'Active') {
+        const purDt = new Date(set.purchase_date);
+        const retDt = new Date(set.retirement_date);
+        if (!isNaN(purDt) && !isNaN(retDt)) {
+            boughtRetired = (purDt - retDt) / (1000 * 60 * 60 * 24 * 365.25) > 5.0;
+        }
+    }
+
+    const sign = (v) => (v > 0 ? '+' : '');
+    let result;
+    if (set.goal === 'legacy') {
+        result = { cls: 'legacy', text: '👑 Joya familiar · sin coste de compra' };
+    } else if (set.goal === 'investment') {
+        result = { cls: profit > 0 ? 'gain' : (profit < 0 ? 'loss' : 'neutral'),
+                   text: `Plusvalía ${sign(profit)}${fmtEur(profit)} (${sign(roiPct)}${roiPct.toFixed(0)}%)` };
+    } else if (boughtRetired) {
+        result = { cls: 'neutral', text: '🕰️ Comprado descatalogado' };
+    } else if (set.retail_price > 0) {
+        result = { cls: saved > 0 ? 'gain' : (saved < 0 ? 'loss' : 'neutral'),
+                   text: saved >= 0 ? `Ahorro ${fmtEur(saved)} (${savingPct.toFixed(0)}%) vs PVP`
+                                    : `${fmtEur(-saved)} por encima del PVP` };
+    } else {
+        result = { cls: 'neutral', text: 'Sin PVP registrado' };
+    }
+
+    return { extra, parts, totalCost, saved, savingPct, profit, roiPct, boughtRetired, result };
+}
+
 // --- Card Rendering ---
 function renderCards() {
     setsGrid.innerHTML = '';
-    
+
     if (filteredSets.length === 0) {
         emptyState.classList.remove('hidden');
         return;
     }
-    
+
     emptyState.classList.add('hidden');
 
     filteredSets.forEach(set => {
-        const card = document.createElement('div');
-        card.className = `lego-card`;
-        
-        // Theme Accents
-        const tLower = set.theme.toLowerCase();
-        if (tLower.includes('star wars') || tLower.includes('starwars')) {
-            card.classList.add('theme-starwars');
-        } else if (tLower.includes('batman')) {
-            card.classList.add('theme-batman');
-        } else if (tLower.includes('pirate') || tLower.includes('pirata')) {
-            card.classList.add('theme-pirates');
-        }
+        const card = document.createElement('article');
+        card.className = `set-card${set.goal === 'legacy' ? ' is-legacy' : ''}`;
+        card.dataset.setId = set.id;
 
-        // Financial Purpose Accent
-        if (set.goal === 'investment') {
-            card.classList.add('goal-investment');
-        } else if (set.goal === 'collection' || set.goal === 'legacy') {
-            card.classList.add('goal-collection');
-            if (set.goal === 'legacy') {
-                card.classList.add('legacy-set');
-            }
-        }
+        const fin = setFinancials(set);
+        const links = setLinks(set);
+        const imgUrl = setImageUrl(set);
+        const year = (set.release_date || '').slice(0, 4);
+        const sub = set.subcategory ? `${set.theme} · ${set.subcategory}` : set.theme;
 
-        // Calculations for card
-        const partsCost = parseFloat(set.parts_cost) || 0.0;
-        const spentOnSet = set.purchase_price + set.extra_costs + partsCost;
-        const savedOnSet = set.retail_price - set.purchase_price;
-        const savingPct = set.retail_price > 0 ? (savedOnSet / set.retail_price) * 100 : 0;
-        
-        const isLegacy = set.goal === 'legacy';
-        const potentialProfit = set.market_price - spentOnSet;
-        const roiPct = spentOnSet > 0 ? (potentialProfit / spentOnSet) * 100 : 0;
-
-        let isObsoleteSaving = false;
-        if (set.purchase_date && set.retirement_date && set.retirement_date !== 'Active') {
-            const purDt = new Date(set.purchase_date);
-            const retDt = new Date(set.retirement_date);
-            if (!isNaN(purDt) && !isNaN(retDt)) {
-                if ((purDt - retDt) / (1000 * 60 * 60 * 24 * 365.25) > 5.0) {
-                    isObsoleteSaving = true;
-                }
-            }
-        }
-
-        // Condition Badge Label
-        const conditionLabels = {
-            'sealed': 'Sealed 📦',
-            'complete_mib': 'MIB 📂',
-            'complete_loose': 'Loose 🧱',
-            'no_manual': 'No Manual 📖',
-            'no_box_no_manual': 'No Box/Manual 🗑️',
-            'no_minifigs': 'No Minifigs 👥',
-            'incomplete_with_minifigs': 'Inc. + Figs ⚠️',
-            'incomplete_no_minifigs': 'Incomplete ⚠️'
-        };
-        const conditionText = conditionLabels[set.condition] || set.condition;
-
-        // Resolve image URL (autocomplete using local image if empty or points to brickset)
-        let imgUrl = set.image_url;
-        if (!imgUrl || imgUrl.includes('brickset.com')) {
-            imgUrl = `images/${set.id}.png`;
-        }
-
-        // Build Card HTML
         card.innerHTML = `
-            <div class="card-image-wrapper">
-                <div class="card-badges-floating">
-                    <span class="badge badge-condition condition-${set.condition}">${conditionText}</span>
-                    <span class="badge badge-goal goal-${set.goal}">${set.goal === 'investment' ? 'Inversión 📈' : (set.goal === 'legacy' ? 'Legado 👑' : 'Colección ✨')}</span>
+            <div class="set-card-stage" data-action="detail" title="Ver ficha del set">
+                <div class="set-card-tools">
+                    <button type="button" class="set-tool" data-action="parts" title="Piezas faltantes">🔧</button>
+                    <button type="button" class="set-tool" data-action="edit" title="Editar">✏️</button>
+                    <button type="button" class="set-tool danger" data-action="delete" title="Borrar">🗑️</button>
                 </div>
-                <img class="card-image" src="${imgUrl}" alt="${set.name}" loading="lazy" onerror="if (this.src.endsWith('.png') || this.src.includes('.png')) { this.src = 'images/${set.id}.jpg'; } else { this.style.display='none'; this.nextElementSibling.style.display='flex'; }">
-                <div class="image-fallback" style="display: none;">
-                    <img src="images/logo.png" class="fallback-logo" alt="Lego">
-                    <span class="fallback-text">#${set.id}</span>
-                </div>
-            </div>
-            
-            <div class="card-header">
-                <span class="set-id">#${set.id}</span>
-                <h3 class="set-name">${set.name}</h3>
-                <span class="set-sub">${set.theme} ${set.subcategory ? `• ${set.subcategory}` : ''}</span>
-            </div>
-            
-            <div class="card-details">
-                <div class="detail-row">
-                    <span class="detail-label">PVP Oficial:</span>
-                    <span class="detail-val">${set.retail_price.toFixed(2)} €</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Adquisición:</span>
-                    <span class="detail-val highlight-val">${isLegacy ? 'Legacy (Infancia/Regalo)' : `${set.purchase_price.toFixed(2)} €`}</span>
-                </div>
-                ${set.extra_costs > 0 ? `
-                <div class="detail-row small-row">
-                    <span class="detail-label">Costes Extra:</span>
-                    <span class="detail-val">+${set.extra_costs.toFixed(2)} €</span>
-                </div>` : ''}
-                ${partsCost > 0 ? `
-                <div class="detail-row small-row">
-                    <span class="detail-label">Piezas Sueltas:</span>
-                    <span class="detail-val highlight-parts">+${partsCost.toFixed(2)} € 🧩</span>
-                </div>` : ''}
-                <div class="detail-row">
-                    <span class="detail-label">Valor de Mercado:</span>
-                    <span class="detail-val market-val">${set.market_price.toFixed(2)} €</span>
+                ${year ? `<span class="set-card-year">${esc(year)}</span>` : ''}
+                <img class="set-card-img" src="${esc(imgUrl)}" alt="${esc(set.name)}" loading="lazy" onerror="if (this.src.includes('.png')) { this.src = 'images/${esc(set.id)}.jpg'; } else { this.style.display='none'; this.nextElementSibling.style.display='flex'; }">
+                <div class="set-card-fallback">
+                    <img src="images/logo.png" alt="">
+                    <span>#${esc(set.id)}</span>
                 </div>
             </div>
 
-            <!-- Financial Analysis Widget -->
-            <div class="financial-widget">
-                ${set.goal === 'investment' ? `
-                    <div class="profit-row">
-                        <span class="widget-lbl">Plusvalía:</span>
-                        <span class="widget-val ${potentialProfit >= 0 ? 'profit-gain' : 'profit-loss'}">
-                            ${potentialProfit >= 0 ? '+' : ''}${potentialProfit.toFixed(2)} € (${roiPct.toFixed(0)}% ROI)
-                        </span>
-                    </div>
-                    ${savingPct > 0 ? `
-                    <div class="savings-progress">
-                        <div class="progress-bar" style="width: ${Math.min(savingPct, 100)}%"></div>
-                        <span class="progress-lbl">Ahorraste un ${savingPct.toFixed(0)}% en compra</span>
-                    </div>` : ''}
-                ` : `
-                    ${isLegacy ? `
-                        <div class="legacy-badge-box">
-                            <span class="legacy-lbl">👑 Joya Familiar (100% Equity)</span>
-                            <span class="legacy-sub">Valuación neta: ${set.market_price.toFixed(2)} €</span>
-                        </div>
-                    ` : `
-                        ${isObsoleteSaving ? `
-                            <div class="legacy-badge-box" style="border-left-color: var(--accent-primary);">
-                                <span class="legacy-lbl" style="color: var(--text-secondary);">🕰️ Adquirido Descatalogado</span>
-                                <span class="legacy-sub">PVP Original: ${set.retail_price.toFixed(2)} €</span>
-                            </div>
-                        ` : `
-                            <div class="profit-row">
-                                <span class="widget-lbl">Ahorro en PVP:</span>
-                                <span class="widget-val ${savedOnSet >= 0 ? 'profit-gain' : 'profit-loss'}">
-                                    ${savedOnSet.toFixed(2)} € (${savingPct.toFixed(0)}%)
-                                </span>
-                            </div>
-                        `}
-                    `}
-                `}
+            <span class="set-card-id">#${esc(set.id)}</span>
+            <h3 class="set-card-name" data-action="detail" title="${esc(set.name)}">${esc(set.name)}</h3>
+            <span class="set-card-sub" title="${esc(sub)}">${esc(sub)}</span>
+
+            <div class="set-card-tags">
+                <span class="set-tag condition-${esc(set.condition)}">${CONDITION_LABELS[set.condition] || esc(set.condition)}</span>
+                <span class="set-tag goal-tag goal-${esc(set.goal)}">${GOAL_LABELS[set.goal] || esc(set.goal)}</span>
             </div>
 
-            <div class="purchase-store-info">
-                ${set.purchase_store || set.purchase_location ? `
-                    <span>🛍️ ${set.purchase_store || 'Desconocido'} (${set.purchase_location || 'Canal'})</span>
-                ` : '<span>🛒 Canal de compra no especificado</span>'}
+            <div class="set-card-figures">
+                <div>
+                    <span class="set-figure-label">Valor mercado</span>
+                    <span class="set-figure-value market">${fmtEur(set.market_price)}</span>
+                </div>
+                <div>
+                    <span class="set-figure-label">${set.goal === 'legacy' ? 'Adquisición' : 'Coste total'}</span>
+                    <span class="set-figure-value">${set.goal === 'legacy' ? 'Legado' : fmtEur(fin.totalCost)}</span>
+                </div>
+                <div class="set-card-result ${fin.result.cls}">${esc(fin.result.text)}</div>
             </div>
 
-            ${set.notes ? `
-            <div class="card-notes">
-                <p>📝 ${set.notes}</p>
-            </div>` : ''}
-
-            <div class="card-dates-info">
-                <span>📅 Salida: ${set.release_date}</span>
-                <span>📅 Retirada: ${set.retirement_date}</span>
-            </div>
-
-            <div class="card-actions">
-                <a href="${set.official_url || `https://www.lego.com/es-es/search?q=${set.id}`}" target="_blank" class="btn-card-action btn-url" title="Ver en Lego Oficial">🔗 Lego</a>
-                <a href="https://www.brickeconomy.com/search?query=${set.id}" target="_blank" class="btn-card-action btn-url" style="background: rgba(16, 185, 129, 0.08); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.15);" title="Ver Valor de Mercado en BrickEconomy">📈 Valor</a>
-                <a href="https://www.bricklink.com/v2/catalog/catalogitem.page?S=${set.id}-1" target="_blank" class="btn-card-action btn-url" style="background: rgba(59, 130, 246, 0.08); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.15);" title="Ver en BrickLink">📊 BrickLink</a>
-            </div>
-            <div class="card-actions" style="border-top: none; margin-top: -0.2rem; padding-top: 0;">
-                <button class="btn-card-action" style="background: rgba(245, 158, 11, 0.08); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.15); font-size: 0.72rem; padding: 0.4rem;" onclick="openPartsModal('${set.id}')">🔧 Piezas</button>
-                <button class="btn-card-action btn-edit" onclick="openEditModal('${set.id}')">✏️ Editar</button>
-                <button class="btn-card-action btn-delete" onclick="openDeleteModal('${set.id}', '${set.name.replace(/'/g, "\\'")}')">🗑️ Borrar</button>
+            <div class="set-card-links">
+                <a href="${esc(links.brickeconomy)}" target="_blank" rel="noopener" class="set-link link-be" title="Ver valor en BrickEconomy">📈 BrickEconomy</a>
+                <a href="${esc(links.bricklink)}" target="_blank" rel="noopener" class="set-link link-bl">BrickLink</a>
+                <a href="${esc(links.lego)}" target="_blank" rel="noopener" class="set-link link-lego">LEGO</a>
             </div>
         `;
         setsGrid.appendChild(card);
     });
 }
+
+
+// --- Set detail modal (ficha del set) ---
+let activeDetailSetId = null;
+
+function closeSetDetail() {
+    document.getElementById('set-detail-modal')?.classList.add('hidden');
+    activeDetailSetId = null;
+}
+
+async function openSetDetail(id) {
+    const set = legoSets.find(s => s.id === id);
+    if (!set) return;
+    activeDetailSetId = id;
+
+    const fin = setFinancials(set);
+    const links = setLinks(set);
+    const isLegacy = set.goal === 'legacy';
+
+    document.getElementById('set-detail-kicker').textContent = set.subcategory
+        ? `${set.theme} · ${set.subcategory}`.toUpperCase()
+        : set.theme.toUpperCase();
+    document.getElementById('set-detail-title').textContent = set.name;
+    document.getElementById('set-detail-id-badge').textContent = `#${set.id}`;
+
+    const img = document.getElementById('set-detail-image');
+    img.onerror = () => {
+        if (img.src.includes('.png')) { img.src = `images/${set.id}.jpg`; }
+        else { img.onerror = null; img.src = 'images/placeholder.png'; }
+    };
+    img.src = setImageUrl(set);
+
+    document.getElementById('set-detail-tags').innerHTML = `
+        <span class="set-tag condition-${esc(set.condition)}">${CONDITION_LABELS[set.condition] || esc(set.condition)}</span>
+        <span class="set-tag goal-tag goal-${esc(set.goal)}">${GOAL_LABELS[set.goal] || esc(set.goal)}</span>`;
+
+    document.getElementById('set-detail-links').innerHTML = `
+        <a href="${esc(links.brickeconomy)}" target="_blank" rel="noopener" class="set-link link-be">📈 BrickEconomy</a>
+        <a href="${esc(links.bricklink)}" target="_blank" rel="noopener" class="set-link link-bl">BrickLink</a>
+        <a href="${esc(links.lego)}" target="_blank" rel="noopener" class="set-link link-lego">LEGO</a>`;
+
+    // Money breakdown
+    const row = (label, value, cls = '') => `
+        <div class="set-detail-row ${cls}"><span>${label}</span><strong>${value}</strong></div>`;
+    document.getElementById('set-detail-money').innerHTML =
+        row('Valor de mercado', fmtEur(set.market_price), 'highlight') +
+        row('PVP oficial', set.retail_price > 0 ? fmtEur(set.retail_price) : '—') +
+        row('Precio de compra', isLegacy ? 'Legado (sin coste)' : fmtEur(set.purchase_price)) +
+        (fin.extra > 0 ? row('Envío / costes extra', `+${fmtEur(fin.extra)}`) : '') +
+        (fin.parts > 0 ? row('Piezas sueltas / repuestos', `+${fmtEur(fin.parts)}`) : '') +
+        (!isLegacy ? row('Coste total', fmtEur(fin.totalCost), 'total') : '') +
+        `<div class="set-card-result ${fin.result.cls}">${esc(fin.result.text)}</div>`;
+
+    // General info
+    const missing = missingPieces.filter(p => p.set_id === set.id && p.status !== 'received');
+    const missingQty = missing.reduce((sum, p) => sum + p.quantity, 0);
+    const info = (label, value) => `
+        <div class="piece-spec-item"><span class="spec-label">${label}</span><span class="spec-value">${value}</span></div>`;
+    document.getElementById('set-detail-info').innerHTML =
+        info('Salida', esc(set.release_date || '—')) +
+        info('Retirada', set.retirement_date === 'Active' ? 'A la venta' : esc(set.retirement_date || '—')) +
+        info('Fecha de compra', esc(set.purchase_date || '—')) +
+        info('Tienda', esc([set.purchase_store, set.purchase_location].filter(Boolean).join(' · ') || '—')) +
+        info('Piezas pendientes', missingQty > 0 ? `${missingQty} en la lista de compras` : 'Ninguna');
+
+    const notesCard = document.getElementById('set-detail-notes-card');
+    document.getElementById('set-detail-notes').textContent = set.notes || '';
+    notesCard.classList.toggle('hidden', !set.notes);
+
+    document.getElementById('set-detail-modal').classList.remove('hidden');
+
+    // Minifigures of this set (from the collection aggregate; loaded once on demand)
+    const figsBox = document.getElementById('set-detail-figs');
+    const figsCard = document.getElementById('set-detail-figs-card');
+    figsCard.classList.remove('hidden');
+    if (minifigures.length === 0) {
+        figsBox.innerHTML = '<div class="spinner"></div>';
+        try {
+            const res = await fetch('/api/minifigs');
+            if (res.ok) minifigures = await res.json();
+        } catch (e) {
+            console.error('Error loading minifigures for set detail:', e);
+        }
+        if (activeDetailSetId !== id) return;
+    }
+    const figs = minifigures.filter(f => f.sets.some(s => s.id === set.id));
+    if (figs.length === 0) {
+        figsCard.classList.add('hidden');
+        return;
+    }
+    figsBox.innerHTML = figs.map(f => {
+        const inSet = f.sets.find(s => s.id === set.id);
+        return `
+            <div class="set-detail-fig" title="${esc(f.name)}">
+                <div class="set-detail-fig-img">
+                    <img src="${esc(f.image_url || `https://img.bricklink.com/ItemImage/MN/0/${encodeURIComponent(f.code)}.png`)}" alt="${esc(f.name)}" loading="lazy" onerror="this.onerror=null; this.src='images/placeholder.png'">
+                    ${inSet && inSet.qty_in_set > 1 ? `<span class="set-detail-fig-qty">x${inSet.qty_in_set}</span>` : ''}
+                </div>
+                <span class="set-detail-fig-code">${esc(f.code)}</span>
+                <span class="set-detail-fig-name">${esc(f.name.split(' - ')[0])}</span>
+            </div>`;
+    }).join('');
+}
+
+
+// --- Spending breakdown (opened from the "Total gastado" KPI) ---
+// Uses the same scope as the KPI (loose minifigures excluded) so the totals match.
+function openSpendBreakdown() {
+    const rows = legoSets
+        .filter(s => s.subcategory !== 'Loose Minifigure')
+        .map(s => {
+            const extra = parseFloat(s.extra_costs) || 0;
+            const parts = parseFloat(s.parts_cost) || 0;
+            return { set: s, price: s.purchase_price, extra, parts, total: s.purchase_price + extra + parts };
+        })
+        .sort((a, b) => b.total - a.total || a.set.id.localeCompare(b.set.id, undefined, { numeric: true }));
+
+    const sum = (key) => rows.reduce((acc, r) => acc + r[key], 0);
+    const totals = { price: sum('price'), extra: sum('extra'), parts: sum('parts'), total: sum('total') };
+    const paidSets = rows.filter(r => r.total > 0).length;
+
+    const tile = (label, value, sub, cls = '') => `
+        <div class="spend-tile ${cls}">
+            <span class="spend-tile-label">${label}</span>
+            <span class="spend-tile-value">${value}</span>
+            <span class="spend-tile-sub">${sub}</span>
+        </div>`;
+    const pct = (v) => totals.total > 0 ? `${((v / totals.total) * 100).toFixed(0)}% del total` : '—';
+    document.getElementById('spend-summary').innerHTML =
+        tile('Total gastado', fmtEur(totals.total), `${paidSets} de ${rows.length} sets con gasto`, 'main') +
+        tile('Precio de los sets', fmtEur(totals.price), pct(totals.price)) +
+        tile('Envíos y comisiones', fmtEur(totals.extra), pct(totals.extra)) +
+        tile('Piezas y repuestos', fmtEur(totals.parts), pct(totals.parts));
+
+    // Spending per store
+    const stores = {};
+    rows.filter(r => r.total > 0).forEach(r => {
+        const store = r.set.purchase_store || 'Sin tienda';
+        stores[store] = stores[store] || { total: 0, count: 0 };
+        stores[store].total += r.total;
+        stores[store].count += 1;
+    });
+    const storeList = Object.entries(stores).sort((a, b) => b[1].total - a[1].total);
+    const maxStore = storeList.length ? storeList[0][1].total : 0;
+    document.getElementById('spend-stores').innerHTML = storeList.length ? `
+        <h3 class="piece-card-heading">🛍️ Por tienda</h3>
+        ${storeList.map(([store, info]) => `
+            <div class="spend-store-row">
+                <span class="spend-store-name">${esc(store)} <small>${info.count} ${info.count === 1 ? 'set' : 'sets'}</small></span>
+                <div class="spend-store-bar"><div style="width: ${maxStore > 0 ? (info.total / maxStore) * 100 : 0}%"></div></div>
+                <strong>${fmtEur(info.total)}</strong>
+            </div>`).join('')}` : '';
+
+    // Per set table
+    const money = (v, dimZero = true) => v > 0 || !dimZero ? fmtEur(v) : '<span class="spend-zero">—</span>';
+    document.getElementById('spend-table-body').innerHTML = rows.map(r => `
+        <tr class="${r.set.goal === 'legacy' ? 'is-legacy' : ''}">
+            <td>
+                <button type="button" class="spend-set" data-set-id="${esc(r.set.id)}" title="Ver ficha del set">
+                    <img src="${esc(setImageUrl(r.set))}" alt="" loading="lazy" onerror="this.onerror=null; this.src='images/placeholder.png'">
+                    <span><small>#${esc(r.set.id)}</small>${esc(r.set.name)}</span>
+                </button>
+            </td>
+            <td class="muted">${esc(r.set.purchase_date || '—')}</td>
+            <td class="muted">${esc(r.set.purchase_store || '—')}</td>
+            <td class="num">${r.set.goal === 'legacy' && r.price === 0 ? '<span class="spend-legacy">👑 Legado</span>' : money(r.price, false)}</td>
+            <td class="num">${money(r.extra)}</td>
+            <td class="num">${money(r.parts)}</td>
+            <td class="num total">${fmtEur(r.total)}</td>
+        </tr>`).join('');
+    document.getElementById('spend-table-foot').innerHTML = `
+        <tr>
+            <td colspan="3">Total (${rows.length} sets)</td>
+            <td class="num">${fmtEur(totals.price)}</td>
+            <td class="num">${fmtEur(totals.extra)}</td>
+            <td class="num">${fmtEur(totals.parts)}</td>
+            <td class="num total">${fmtEur(totals.total)}</td>
+        </tr>`;
+
+    document.getElementById('spend-modal').classList.remove('hidden');
+}
+
+// Clicking a set in the breakdown opens its detail sheet
+document.getElementById('spend-table-body')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.spend-set');
+    if (!btn) return;
+    document.getElementById('spend-modal').classList.add('hidden');
+    openSetDetail(btn.dataset.setId);
+});
 
 
 function updateMinifigKPIs() {
@@ -723,48 +982,50 @@ function renderMinifigCards() {
         card.className = 'minifig-card';
         
         // Add theme class for border accents and neon glows
-        const tLower = fig.theme.toLowerCase();
-        if (tLower.includes('star wars') || tLower.includes('starwars')) {
-            card.classList.add('theme-starwars');
-        } else if (tLower.includes('batman')) {
-            card.classList.add('theme-batman');
-        } else if (tLower.includes('pirate') || tLower.includes('pirata')) {
-            card.classList.add('theme-pirates');
-        } else {
-            card.classList.add('theme-other');
-        }
-        
+        const tKey = themeKey(fig.theme);
+        card.classList.add(tKey === 'harrypotter' ? 'theme-other' : `theme-${tKey}`);
+
         // Resolve image URL
-        let imgUrl = fig.image_url;
-        if (imgUrl && imgUrl.startsWith('images/')) {
-            imgUrl = `${imgUrl}?t=${Date.now()}`;
-        } else if (!imgUrl) {
-            imgUrl = `https://img.bricklink.com/ItemImage/MN/0/${fig.code}.png`;
-        }
-        
+        const bricklinkImg = `https://img.bricklink.com/ItemImage/MN/0/${encodeURIComponent(fig.code)}.png`;
+        const imgUrl = fig.image_url || bricklinkImg;
+        const links = minifigCatalogLinks(fig.code, fig.name);
+        const isLoose = fig.sets.some(s => s.id === 'Loose');
+        const factionKey = minifigFaction(fig.name, fig.theme);
+        const faction = factionKey
+            ? (FACTIONS.find(f => f.key === factionKey) || OTHER_FACTION)
+            : null;
+
         // Build Sets Origin List
         const setsHtml = fig.sets.map(s => `
             <div class="origin-set-item">
-                <span class="origin-set-id">#${s.id}</span>
-                <span class="origin-set-name">${s.name}</span>
+                <span class="origin-set-id">#${esc(s.id)}</span>
+                <span class="origin-set-name">${esc(s.name)}</span>
                 <span class="origin-set-qty">x${s.qty_in_set} ${s.qty_owned > 1 ? `<small class="qty-owned-label">(${s.qty_owned}x sets)</small>` : ''}</span>
             </div>
         `).join('');
-        
+
         card.innerHTML = `
-            <div class="minifig-image-wrapper" style="cursor:pointer;" onclick="openGoalDetail('${g.id}', '${g.name.replace(/'/g, "\'")}', '${g.image_url}', '${g.type}')">
+            <div class="minifig-image-wrapper" style="cursor:pointer;" title="Ver en qué sets aparece" onclick="openGoalDetail(${jsArg(fig.code)}, ${jsArg(fig.name)}, ${jsArg(imgUrl)}, 'minifig')">
                 <span class="minifig-qty-badge">x${fig.quantity}</span>
-                <img class="minifig-image" src="${imgUrl}" alt="${fig.name}" loading="lazy" onerror="if(!this.src.startsWith('https://img.bricklink.com/')) { this.src='https://img.bricklink.com/ItemImage/MN/0/${fig.code}.png'; } else { this.style.display='none'; this.nextElementSibling.style.display='flex'; }">
+                ${isLoose ? `
+                <div class="minifig-loose-tools">
+                    <button type="button" class="minifig-tool" title="Editar figura suelta" onclick="event.stopPropagation(); openEditModal(${jsArg(fig.code)})">✏️</button>
+                    <button type="button" class="minifig-tool danger" title="Borrar figura suelta" onclick="event.stopPropagation(); openDeleteModal(${jsArg(fig.code)}, ${jsArg(fig.name)})">🗑️</button>
+                </div>` : ''}
+                <img class="minifig-image" src="${esc(imgUrl)}" alt="${esc(fig.name)}" loading="lazy" onerror="if(!this.src.startsWith('https://img.bricklink.com/')) { this.src='${esc(bricklinkImg)}'; } else { this.style.display='none'; this.nextElementSibling.style.display='flex'; }">
                 <div class="minifig-fallback" style="display:none;">
                     <span>👥</span>
-                    <small>${fig.code}</small>
+                    <small>${esc(fig.code)}</small>
                 </div>
             </div>
-            
+
             <div class="minifig-header">
-                <span class="minifig-code-label">#${fig.code}</span>
-                <h3 class="minifig-name-label" title="${fig.name}">${fig.name}</h3>
-                <span class="minifig-theme-label">${fig.theme}</span>
+                <span class="minifig-code-label">#${esc(fig.code)}</span>
+                <h3 class="minifig-name-label" title="${esc(fig.name)}">${esc(fig.name)}</h3>
+                <div class="minifig-meta-row">
+                    <span class="minifig-theme-label">${esc(fig.theme)}</span>
+                    ${faction ? `<button type="button" class="minifig-faction-badge faction-${faction.key}" data-faction="${faction.key}" title="Filtrar por ${esc(faction.label)}">${faction.icon} ${esc(faction.label)}</button>` : ''}
+                </div>
             </div>
             
             <div class="minifig-origins">
@@ -774,19 +1035,11 @@ function renderMinifigCards() {
                 </div>
             </div>
             
-            <div class="minifig-actions">
-                ${fig.code.startsWith('fig-') ? `
-                    <a href="https://rebrickable.com/minifigs/${fig.code}/" target="_blank" class="btn-minifig-action btn-rebrickable" title="Ver catálogo en Rebrickable">📊 Rebrickable</a>
-                ` : `
-                    <a href="https://www.bricklink.com/v2/catalog/catalogitem.page?M=${fig.code}" target="_blank" class="btn-minifig-action btn-bricklink" title="Ver catálogo en BrickLink">📊 BrickLink</a>
-                `}
+            <div class="minifig-links">
+                <a href="${esc(links.brickeconomy)}" target="_blank" rel="noopener" class="minifig-link link-be" title="Ver valor en BrickEconomy">📈 BrickEconomy</a>
+                <a href="${esc(links.bricklink)}" target="_blank" rel="noopener" class="minifig-link link-bl" title="Buscar en BrickLink">BrickLink</a>
+                <a href="${esc(links.rebrickable)}" target="_blank" rel="noopener" class="minifig-link link-rb" title="Buscar en Rebrickable">Rebrickable</a>
             </div>
-            ${fig.sets.some(s => s.id === 'Loose') ? `
-            <div class="minifig-actions" style="border-top: none; margin-top: -0.2rem; padding-top: 0;">
-                <button class="btn-minifig-action btn-edit" style="font-size: 0.72rem; padding: 0.4rem;" onclick="openEditModal('${fig.code}')">✏️ Editar</button>
-                <button class="btn-minifig-action btn-delete" style="font-size: 0.72rem; padding: 0.4rem;" onclick="openDeleteModal('${fig.code}', '${fig.name.replace(/'/g, "\\'")}')">🗑️ Borrar</button>
-            </div>
-            ` : ''}
         `;
         minifigsGrid.appendChild(card);
     });
@@ -806,25 +1059,28 @@ function applyFiltersAndSort() {
                 fig.theme.toLowerCase().includes(query);
 
             // 2. Theme Filter
-            let matchesTheme = true;
-            if (activeThemeFilter !== 'all') {
-                const themeLower = fig.theme.toLowerCase();
-                if (activeThemeFilter === 'other') {
-                    matchesTheme = !themeLower.includes('star wars') && 
-                                   !themeLower.includes('starwars') && 
-                                   !themeLower.includes('batman') && 
-                                   !themeLower.includes('pirate');
-                } else {
-                    matchesTheme = themeLower.includes(activeThemeFilter.toLowerCase());
-                }
-            }
-
-            return matchesSearch && matchesTheme;
+            return matchesSearch && matchesThemeFilter(fig.theme);
         });
+
+        // 3. Faction filter (chips show counts for the current search + theme)
+        renderFactionChips(filteredMinifigures);
+        if (activeFactionFilter !== 'all') {
+            filteredMinifigures = filteredMinifigures.filter(fig => minifigFaction(fig.name, fig.theme) === activeFactionFilter);
+        }
 
         // 3. Sorting
         const sortVal = sortSelect.value;
         filteredMinifigures.sort((a, b) => {
+            if (sortVal === 'faction_asc') {
+                // Same order as the faction chips; non Star Wars figures go last
+                const rank = (fig) => {
+                    const key = minifigFaction(fig.name, fig.theme);
+                    if (!key) return FACTIONS.length + 1;
+                    const idx = FACTIONS.findIndex(f => f.key === key);
+                    return idx === -1 ? FACTIONS.length : idx;
+                };
+                return rank(a) - rank(b) || a.name.localeCompare(b.name);
+            }
             if (sortVal === 'qty_desc') {
                 return b.quantity - a.quantity;
             }
@@ -876,18 +1132,7 @@ function applyFiltersAndSort() {
             set.notes.toLowerCase().includes(query);
 
         // Theme filter matches
-        let matchesTheme = true;
-        if (activeThemeFilter !== 'all') {
-            const setThemes = set.theme.toLowerCase();
-            if (activeThemeFilter === 'other') {
-                matchesTheme = !setThemes.includes('star wars') && 
-                               !setThemes.includes('starwars') && 
-                               !setThemes.includes('batman') && 
-                               !setThemes.includes('pirate');
-            } else {
-                matchesTheme = setThemes.includes(activeThemeFilter.toLowerCase());
-            }
-        }
+        const matchesTheme = matchesThemeFilter(set.theme);
 
         // Goal Filter matches
         let matchesGoal = true;
@@ -898,6 +1143,12 @@ function applyFiltersAndSort() {
 
         return matchesSearch && matchesTheme && matchesGoal;
     });
+
+    // Subtheme chips (counts for the current search + theme + goal), then apply the subtheme filter
+    renderSubthemeChips(filteredSets);
+    if (activeSubthemeFilter !== 'all') {
+        filteredSets = filteredSets.filter(set => (set.subcategory || 'Sin subtema') === activeSubthemeFilter);
+    }
 
     // 2. Sorting
     const sortVal = sortSelect.value;
@@ -954,20 +1205,71 @@ function applyFiltersAndSort() {
     shoppingListView.classList.add('hidden');
     setsGrid.classList.remove('hidden');
     
-    // Sync active KPI card borders
-    const goalVal = filterGoalSelect.value;
-    document.querySelectorAll('.kpi-card').forEach(card => card.classList.remove('active-filter'));
-    if (goalVal === 'investment') {
-        document.getElementById('kpi-total-spent')?.classList.add('active-filter');
-        document.getElementById('kpi-total-saved')?.classList.add('active-filter');
-        document.getElementById('kpi-investment-roi')?.classList.add('active-filter');
-    } else if (goalVal === 'collection') {
-        document.getElementById('kpi-portfolio-equity')?.classList.add('active-filter');
-    } else if (goalVal === 'legacy') {
-        document.getElementById('kpi-legacy-count')?.classList.add('active-filter');
-    }
-
     renderCards();
+}
+
+function renderFactionChips(figs) {
+    const container = document.getElementById('faction-chips');
+    if (!container) return;
+
+    const counts = {};
+    let starWarsTotal = 0;
+    figs.forEach(fig => {
+        const key = minifigFaction(fig.name, fig.theme);
+        if (!key) return; // not Star Wars
+        counts[key] = (counts[key] || 0) + fig.quantity;
+        starWarsTotal += fig.quantity;
+    });
+    const total = figs.reduce((sum, fig) => sum + fig.quantity, 0);
+
+    // Factions only exist within Star Wars: show the row for "Todos" or "Star Wars" only
+    const row = document.getElementById('faction-filter');
+    const showRow = (activeThemeFilter === 'all' || activeThemeFilter === 'Star Wars') && starWarsTotal > 0;
+    if (row) row.classList.toggle('hidden', !showRow);
+    if (!showRow) activeFactionFilter = 'all';
+
+    // If the active faction has no figures left (e.g. after changing theme), fall back to "all"
+    if (activeFactionFilter !== 'all' && !counts[activeFactionFilter]) activeFactionFilter = 'all';
+
+    const chip = (key, label, count) => `
+        <button type="button" class="filter-chip ${activeFactionFilter === key ? 'active' : ''}" data-faction="${key}">
+            ${label} <span class="chip-count">${count}</span>
+        </button>`;
+
+    container.innerHTML = chip('all', 'Todas', total) +
+        [...FACTIONS, OTHER_FACTION]
+            .filter(f => counts[f.key])
+            .map(f => chip(f.key, `${f.icon} ${esc(f.label)}`, counts[f.key]))
+            .join('');
+}
+
+function renderSubthemeChips(sets) {
+    const row = document.getElementById('subtheme-filter');
+    const container = document.getElementById('subtheme-chips');
+    if (!row || !container) return;
+
+    const counts = {};
+    sets.forEach(set => {
+        const key = set.subcategory || 'Sin subtema';
+        counts[key] = (counts[key] || 0) + 1;
+    });
+    if (activeSubthemeFilter !== 'all' && !counts[activeSubthemeFilter]) activeSubthemeFilter = 'all';
+
+    // Only worth showing when there is more than one subtheme to choose from
+    const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    row.classList.toggle('hidden', keys.length < 2);
+
+    const chip = (key, label, count) => `
+        <button type="button" class="filter-chip ${activeSubthemeFilter === key ? 'active' : ''}" data-subtheme="${esc(key)}">
+            ${esc(label)} <span class="chip-count">${count}</span>
+        </button>`;
+    container.innerHTML = chip('all', 'Todos', sets.length) + keys.map(k => chip(k, k, counts[k])).join('');
+}
+
+// Main search/filter toolbar (the first .toolbar-section; Goals has its own inside its view)
+function setMainToolbarVisible(visible) {
+    const toolbar = document.querySelector('.toolbar-section');
+    if (toolbar) toolbar.classList.toggle('hidden', !visible);
 }
 
 // --- Event Listeners ---
@@ -983,6 +1285,7 @@ function setupEventListeners() {
         if(goalsView) goalsView.classList.add('hidden');
         document.querySelector('.stats-section').classList.remove('hidden');
         document.querySelector('.category-selection-section').classList.remove('hidden');
+        setMainToolbarVisible(true);
             navMinifigs.classList.remove('active');
             navShoppingList.classList.remove('active');
             
@@ -1007,6 +1310,8 @@ function setupEventListeners() {
                 <option value="market_price_desc">Valor Mercado: Mayor primero</option>
             `;
             sortSelect.value = 'purchase_date_desc';
+            document.getElementById('faction-filter')?.classList.add('hidden');
+            searchInput.placeholder = 'Buscar por ID, nombre, subcategoría, tienda, notas...';
             
             // Restore empty state text
             const emptyTitle = emptyState.querySelector('h3');
@@ -1026,6 +1331,7 @@ function setupEventListeners() {
         if(goalsView) goalsView.classList.add('hidden');
         document.querySelector('.stats-section').classList.remove('hidden');
         document.querySelector('.category-selection-section').classList.remove('hidden');
+        setMainToolbarVisible(true);
             navSets.classList.remove('active');
             navShoppingList.classList.remove('active');
             
@@ -1042,6 +1348,7 @@ function setupEventListeners() {
             
             // Update sort options for minifigs
             sortSelect.innerHTML = `
+                <option value="faction_asc">Bando (Star Wars)</option>
                 <option value="qty_desc">Cantidad: Mayor primero</option>
                 <option value="qty_asc">Cantidad: Menor primero</option>
                 <option value="name_asc">Nombre: A-Z</option>
@@ -1049,6 +1356,9 @@ function setupEventListeners() {
                 <option value="set_asc">Set: Por número de set</option>
             `;
             sortSelect.value = 'qty_desc';
+            document.getElementById('faction-filter')?.classList.remove('hidden');
+            document.getElementById('subtheme-filter')?.classList.add('hidden');
+            searchInput.placeholder = 'Buscar minifigura por código, nombre o temática...';
             
             if (minifigures.length === 0) {
                 fetchMinifigures();
@@ -1066,6 +1376,8 @@ function setupEventListeners() {
         if(goalsView) goalsView.classList.add('hidden');
         document.querySelector('.stats-section').classList.remove('hidden');
         document.querySelector('.category-selection-section').classList.add('hidden');
+        // Search & sort only apply to sets/minifigs, not to the shopping list
+        setMainToolbarVisible(false);
             navSets.classList.remove('active');
             navMinifigs.classList.remove('active');
             
@@ -1092,6 +1404,64 @@ function setupEventListeners() {
     // Search
     searchInput.addEventListener('input', applyFiltersAndSort);
 
+    // Minifigure faction chips
+    const factionChips = document.getElementById('faction-chips');
+    if (factionChips) {
+        factionChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-faction]');
+            if (!chip) return;
+            activeFactionFilter = chip.dataset.faction;
+            applyFiltersAndSort();
+        });
+    }
+
+    // Subtheme chips (sets view)
+    const subthemeChips = document.getElementById('subtheme-chips');
+    if (subthemeChips) {
+        subthemeChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-subtheme]');
+            if (!chip) return;
+            activeSubthemeFilter = chip.dataset.subtheme;
+            applyFiltersAndSort();
+        });
+    }
+
+    // Set cards: photo/name open the detail sheet, overlay icons run their action
+    setsGrid.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        const card = e.target.closest('.set-card');
+        if (!actionEl || !card) return;
+        const set = legoSets.find(s => s.id === card.dataset.setId);
+        if (!set) return;
+        const action = actionEl.dataset.action;
+        if (action === 'detail') openSetDetail(set.id);
+        else if (action === 'parts') openPartsModal(set.id);
+        else if (action === 'edit') openEditModal(set.id);
+        else if (action === 'delete') openDeleteModal(set.id, set.name);
+    });
+
+    // Set detail sheet buttons (close the sheet first so the next modal isn't stacked behind it)
+    document.getElementById('btn-close-set-detail')?.addEventListener('click', closeSetDetail);
+    const fromDetail = (fn) => () => {
+        const id = activeDetailSetId;
+        if (!id) return;
+        const set = legoSets.find(s => s.id === id);
+        closeSetDetail();
+        fn(id, set);
+    };
+    document.getElementById('set-detail-btn-edit')?.addEventListener('click', fromDetail(id => openEditModal(id)));
+    document.getElementById('set-detail-btn-parts')?.addEventListener('click', fromDetail(id => openPartsModal(id)));
+    document.getElementById('set-detail-btn-delete')?.addEventListener('click', fromDetail((id, set) => openDeleteModal(id, set ? set.name : id)));
+
+    // Faction badge on a minifigure card: filter by that faction
+    minifigsGrid.addEventListener('click', (e) => {
+        const badge = e.target.closest('.minifig-faction-badge');
+        if (!badge) return;
+        activeFactionFilter = badge.dataset.faction;
+        applyFiltersAndSort();
+        document.getElementById('faction-filter')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
     
     // Theme Cards
     themeTabs.addEventListener('click', (e) => {
@@ -1107,27 +1477,16 @@ function setupEventListeners() {
     // Goal Filter Dropdown
     filterGoalSelect.addEventListener('change', applyFiltersAndSort);
 
-    // KPI Cards clicks
+    // KPI "Total gastado": opens the spending breakdown (KPIs no longer act as hidden filters)
     const kpiTotalSpent = document.getElementById('kpi-total-spent');
-    const kpiTotalSaved = document.getElementById('kpi-total-saved');
-    const kpiInvestmentRoi = document.getElementById('kpi-investment-roi');
-    const kpiPortfolioEquity = document.getElementById('kpi-portfolio-equity');
-    const kpiLegacyCount = document.getElementById('kpi-legacy-count');
-
-    const handleKpiClick = (targetValue) => {
-        if (filterGoalSelect.value === targetValue) {
-            filterGoalSelect.value = 'all';
-        } else {
-            filterGoalSelect.value = targetValue;
-        }
-        filterGoalSelect.dispatchEvent(new Event('change'));
-    };
-
-    if (kpiTotalSpent) kpiTotalSpent.addEventListener('click', () => handleKpiClick('investment'));
-    if (kpiTotalSaved) kpiTotalSaved.addEventListener('click', () => handleKpiClick('investment'));
-    if (kpiInvestmentRoi) kpiInvestmentRoi.addEventListener('click', () => handleKpiClick('investment'));
-    if (kpiPortfolioEquity) kpiPortfolioEquity.addEventListener('click', () => handleKpiClick('collection'));
-    if (kpiLegacyCount) kpiLegacyCount.addEventListener('click', () => handleKpiClick('legacy'));
+    if (kpiTotalSpent) {
+        kpiTotalSpent.classList.add('kpi-clickable');
+        kpiTotalSpent.title = 'Ver desglose de gastos';
+        kpiTotalSpent.addEventListener('click', openSpendBreakdown);
+    }
+    document.getElementById('btn-close-spend')?.addEventListener('click', () => {
+        document.getElementById('spend-modal').classList.add('hidden');
+    });
 
     // Sorting Dropdown
     sortSelect.addEventListener('change', applyFiltersAndSort);
@@ -1302,15 +1661,28 @@ function setupEventListeners() {
     // Missing Piece Detail Modal (Ficha Completa) Event Listeners
     if (btnClosePieceDetail) btnClosePieceDetail.addEventListener('click', closePieceDetailModal);
     if (btnClosePieceDetailFooter) btnClosePieceDetailFooter.addEventListener('click', closePieceDetailModal);
-    if (pieceDetailModal) {
-        pieceDetailModal.addEventListener('click', (e) => {
-            if (e.target === pieceDetailModal) closePieceDetailModal();
+    // Generic modal closing: Escape closes the top-most open modal, clicking the backdrop
+    // closes read-only modals (forms are excluded so typed data isn't lost by accident)
+    const FORM_MODALS = ['set-modal', 'piece-modal'];
+    const closeOverlay = (overlay) => {
+        const btn = overlay.querySelector('.modal-close-btn');
+        if (btn) btn.click();
+        else overlay.classList.add('hidden');
+    };
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        if (FORM_MODALS.includes(overlay.id)) return;
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeOverlay(overlay);
         });
-    }
+    });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && pieceDetailModal && !pieceDetailModal.classList.contains('hidden')) {
-            closePieceDetailModal();
-        }
+        if (e.key !== 'Escape') return;
+        const open = [...document.querySelectorAll('.modal-overlay:not(.hidden)')];
+        if (open.length === 0) return;
+        // Highest z-index wins; on ties the last one in the DOM is on top
+        const top = open.reduce((a, b) =>
+            (parseInt(getComputedStyle(b).zIndex) || 0) >= (parseInt(getComputedStyle(a).zIndex) || 0) ? b : a);
+        closeOverlay(top);
     });
 
     if (pieceDetailStatusSelect) {
@@ -1360,16 +1732,18 @@ function setupEventListeners() {
         pieceDetailBtnDelete.addEventListener('click', async () => {
             if (!activeInspectedPiece) return;
             if (activeInspectedMultiPieces && activeInspectedMultiPieces.length > 1) {
-                if (!confirm(`¿Eliminar la pieza ${activeInspectedPiece.part_num} de todos los sets (${activeInspectedMultiPieces.length})?`)) return;
+                if (!(await confirmDialog({ title: '¿Eliminar pieza?', message: `Se eliminará la pieza ${activeInspectedPiece.part_num} de los ${activeInspectedMultiPieces.length} sets que la necesitan.` }))) return;
+                // Already confirmed once above: don't ask again for every set
+                const toDelete = activeInspectedMultiPieces;
                 closePieceDetailModal();
-                for (const mp of activeInspectedMultiPieces) {
-                    await deletePiece(mp.set_id, mp.part_num, mp.color_id);
+                for (const mp of toDelete) {
+                    await deletePiece(mp.set_id, mp.part_num, mp.color_id, true);
                 }
             } else {
                 const sId = activeInspectedPiece.set_id;
                 const pNum = activeInspectedPiece.part_num;
                 const cId = activeInspectedPiece.color_id;
-                closePieceDetailModal();
+                // deletePiece asks for confirmation and closes this modal on success
                 await deletePiece(sId, pNum, cId);
             }
         });
@@ -1492,7 +1866,7 @@ function setupEventListeners() {
         // Customise modal title
         const pieceModalTitle = document.getElementById('piece-modal-title');
         if (pieceModalTitle) {
-            pieceModalTitle.innerHTML = `🧩 Añadir Piezas al Set: <span style="color: var(--accent-primary); font-weight: 700;">#${setId} - ${setName}</span>`;
+            pieceModalTitle.innerHTML = `🧩 Añadir Piezas al Set: <span style="color: var(--accent-primary); font-weight: 700;">#${setId} - ${esc(setName)}</span>`;
         }
 
         // Open modal
@@ -1688,10 +2062,10 @@ function setupEventListeners() {
             const imgSrc = part.image_url || 'https://cdn.rebrickable.com/static/img/nil.png';
             card.innerHTML = `
                 <div class="part-add-badge">${isAlreadyMissing ? '✓' : '+'}</div>
-                <img src="${imgSrc}" alt="${part.name}" onerror="this.src='https://cdn.rebrickable.com/static/img/nil.png'">
+                <img src="${imgSrc}" alt="${esc(part.name)}" onerror="this.src='https://cdn.rebrickable.com/static/img/nil.png'">
                 <span class="part-code">${part.part_num}</span>
-                <span class="part-name">${part.name}</span>
-                <span class="part-color-badge">${part.color_name || 'Sin color'}</span>
+                <span class="part-name">${esc(part.name)}</span>
+                <span class="part-color-badge">${esc(part.color_name || 'Sin color')}</span>
             `;
             card.addEventListener('click', async () => {
                 const payload = {
@@ -1853,8 +2227,12 @@ function showError(title, error) {
     console.error(title, error);
     const banner = document.createElement('div');
     banner.className = 'error-banner';
-    banner.innerHTML = `<strong>⚠️ ${title}</strong><br><small>${error.message}</small>`;
+    banner.innerHTML = `
+        <button type="button" class="error-banner-close" aria-label="Cerrar">&times;</button>
+        <strong>⚠️ ${esc(title)}</strong><br><small>${esc(error && error.message)}</small>`;
+    banner.querySelector('.error-banner-close').addEventListener('click', () => banner.remove());
     document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 8000);
 }
 
 // --- Missing Pieces & Shopping List Logic ---
@@ -1936,25 +2314,25 @@ function renderShoppingList() {
                 const badgeClass = p.status === 'needed' ? 'badge-needed' : (p.status === 'ordered' ? 'badge-ordered' : 'badge-received');
                 
                 return `
-                    <div class="missing-piece-card ${statusClass}" data-set-id="${p.set_id}" data-part-num="${p.part_num}" data-color-id="${p.color_id}" title="Haz clic para ver la ficha completa y ampliar imagen">
+                    <div class="missing-piece-card ${statusClass}" data-set-id="${p.set_id}" data-part-num="${esc(p.part_num)}" data-color-id="${p.color_id}" title="Haz clic para ver la ficha completa y ampliar imagen">
                         <div class="missing-piece-image-wrapper">
-                            <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${p.name}" onerror="this.onerror=null; this.src='images/placeholder.png';">
+                            <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${esc(p.name)}" onerror="this.onerror=null; this.src='images/placeholder.png';">
                         </div>
                         <div class="missing-piece-details">
-                            <h4 class="missing-piece-name" title="${p.name}">${p.name}</h4>
-                            <span class="missing-piece-meta">ID: ${p.part_num} | Color: ${p.color_name}</span>
+                            <h4 class="missing-piece-name" title="${esc(p.name)}">${esc(p.name)}</h4>
+                            <span class="missing-piece-meta">ID: ${esc(p.part_num)} | Color: ${esc(p.color_name)}</span>
                             <div>
                                 <span class="badge-status ${badgeClass}">${statusLabel}</span>
-                                <span class="missing-piece-qty-label">x<input type="number" class="input-qty-inline" value="${p.quantity}" min="1" onchange="changePieceQuantity('${p.set_id}', '${p.part_num}', ${p.color_id}, this.value)"></span>
+                                <span class="missing-piece-qty-label">x<input type="number" class="input-qty-inline" value="${p.quantity}" min="1" onchange="changePieceQuantity('${p.set_id}', '${esc(p.part_num)}', ${p.color_id}, this.value)"></span>
                             </div>
                         </div>
                         <div class="missing-piece-actions">
-                            <select class="select-status" onchange="changePieceStatus('${p.set_id}', '${p.part_num}', ${p.color_id}, this.value)">
+                            <select class="select-status" onchange="changePieceStatus('${p.set_id}', '${esc(p.part_num)}', ${p.color_id}, this.value)">
                                 <option value="needed" ${p.status === 'needed' ? 'selected' : ''}>Necesitada</option>
                                 <option value="ordered" ${p.status === 'ordered' ? 'selected' : ''}>Pedida</option>
                                 <option value="received" ${p.status === 'received' ? 'selected' : ''}>Recibida</option>
                             </select>
-                            <button class="btn-delete-part" onclick="deletePiece('${p.set_id}', '${p.part_num}', ${p.color_id})" title="Eliminar de la lista">🗑️</button>
+                            <button class="btn-delete-part" onclick="deletePiece('${p.set_id}', '${esc(p.part_num)}', ${p.color_id})" title="Eliminar de la lista">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -1963,7 +2341,7 @@ function renderShoppingList() {
             section.innerHTML = `
                 <div class="shopping-set-title">
                     <div class="shopping-set-title-info">
-                        <span>🧱 ${setName}</span>
+                        <span>🧱 ${esc(setName)}</span>
                         <span class="shopping-set-id">#${setId}</span>
                         ${setObj && (parseFloat(setObj.parts_cost) || 0) > 0 ? `<span class="badge-parts-cost" title="Gasto en piezas sueltas de este set">🧩 ${(parseFloat(setObj.parts_cost)).toFixed(2)} € en piezas</span>` : ''}
                     </div>
@@ -2010,21 +2388,24 @@ function renderShoppingList() {
             const setsListHtml = p.sets.map(s => {
                 const setObj = legoSets.find(set => set.id === s.set_id);
                 const name = setObj ? setObj.name : `Set #${s.set_id}`;
-                return `<div style="font-size: 0.72rem; color: var(--text-secondary);">• #${s.set_id} - ${name} (x${s.qty})</div>`;
+                return `<div style="font-size: 0.72rem; color: var(--text-secondary);">• #${s.set_id} - ${esc(name)} (x${s.qty})</div>`;
             }).join('');
             
-            const badgeClass = p.status === 'needed' ? 'badge-needed' : (p.status === 'ordered' ? 'badge-ordered' : 'badge-received');
-            const statusLabel = p.status === 'needed' ? 'Necesitada' : (p.status === 'ordered' ? 'Pedida' : 'Recibida');
-            
+            // Show the least advanced status across all sets (any "needed" wins over "ordered", etc.)
+            const statuses = p.sets.map(s => s.status);
+            const aggStatus = statuses.includes('needed') ? 'needed' : (statuses.includes('ordered') ? 'ordered' : 'received');
+            const badgeClass = STATUS_INFO[aggStatus].badge;
+            const statusLabel = STATUS_INFO[aggStatus].label;
+
             grid.innerHTML += `
-                <div class="missing-piece-card" data-part-num="${p.part_num}" data-color-id="${p.color_id}" style="flex-direction: column; align-items: stretch; gap: 0.5rem;" title="Haz clic para ver la ficha completa y ampliar imagen">
+                <div class="missing-piece-card" data-part-num="${esc(p.part_num)}" data-color-id="${p.color_id}" style="flex-direction: column; align-items: stretch; gap: 0.5rem;" title="Haz clic para ver la ficha completa y ampliar imagen">
                     <div style="display: flex; gap: 1rem; align-items: center;">
                         <div class="missing-piece-image-wrapper">
-                            <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${p.name}" onerror="this.onerror=null; this.src='images/placeholder.png';">
+                            <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${esc(p.name)}" onerror="this.onerror=null; this.src='images/placeholder.png';">
                         </div>
                         <div class="missing-piece-details">
-                            <h4 class="missing-piece-name" title="${p.name}">${p.name}</h4>
-                            <span class="missing-piece-meta">ID: ${p.part_num} | Color: ${p.color_name}</span>
+                            <h4 class="missing-piece-name" title="${esc(p.name)}">${esc(p.name)}</h4>
+                            <span class="missing-piece-meta">ID: ${esc(p.part_num)} | Color: ${esc(p.color_name)}</span>
                             <div>
                                 <span class="badge-status ${badgeClass}">${statusLabel}</span>
                                 <span class="missing-piece-qty-label" style="font-size: 0.9rem;">Total: x${p.quantity}</span>
@@ -2118,8 +2499,8 @@ async function changePieceQuantity(setId, partNum, colorId, newQty) {
 }
 window.changePieceQuantity = changePieceQuantity;
 
-async function deletePiece(setId, partNum, colorId) {
-    if (!confirm('¿Seguro que quieres eliminar esta pieza de la lista de faltantes?')) return;
+async function deletePiece(setId, partNum, colorId, skipConfirm = false) {
+    if (!skipConfirm && !(await confirmDialog({ title: '¿Eliminar pieza?', message: 'Se quitará esta pieza de la lista de compras.' }))) return;
     
     try {
         const response = await fetch(`/api/missing-pieces/${setId}/${partNum}/${colorId}`, {
@@ -2237,7 +2618,7 @@ function openPieceDetailModal(piece, multiPieces = null) {
                     <div class="piece-multiset-item">
                         <div>
                             <strong style="color:#FFF;">#${mp.set_id}</strong>
-                            <span class="piece-multiset-item-name"> — ${sName}</span>
+                            <span class="piece-multiset-item-name"> — ${esc(sName)}</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:0.6rem;">
                             <span class="badge-status ${badgeClass}" style="font-size:0.7rem;">${statusLabel}</span>
@@ -2337,10 +2718,8 @@ window.quickEditPartsCost = async function() {
         const costEl = document.getElementById('parts-modal-cost-val');
         if (costEl) costEl.innerText = `${newCost.toFixed(2)} €`;
         
-        updateKPIs();
         updateShoppingListKPIs();
-        renderSets();
-        if (typeof renderShoppingList === 'function') renderShoppingList();
+        applyFiltersAndSort();
         showNotification(`Gasto en piezas de #${activePartsSetId} actualizado a ${newCost.toFixed(2)} €`);
     } catch (e) {
         alert('Error: ' + e.message);
@@ -2394,23 +2773,23 @@ function renderCurrentMissing() {
         card.title = "Haz clic para ver la ficha completa y ampliar imagen";
         card.innerHTML = `
             <div class="missing-piece-image-wrapper">
-                <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${p.name}" onerror="this.onerror=null; this.src='images/placeholder.png';">
+                <img class="missing-piece-img" src="${p.image_url || 'images/placeholder.png'}" alt="${esc(p.name)}" onerror="this.onerror=null; this.src='images/placeholder.png';">
             </div>
             <div class="missing-piece-details">
-                <h4 class="missing-piece-name" title="${p.name}">${p.name}</h4>
-                <span class="missing-piece-meta">ID: ${p.part_num} | Color: ${p.color_name}</span>
+                <h4 class="missing-piece-name" title="${esc(p.name)}">${esc(p.name)}</h4>
+                <span class="missing-piece-meta">ID: ${esc(p.part_num)} | Color: ${esc(p.color_name)}</span>
                 <div>
                     <span class="badge-status ${badgeClass}">${statusLabel}</span>
-                    <span class="missing-piece-qty-label">x<input type="number" class="input-qty-inline" value="${p.quantity}" min="1" onchange="changePieceQuantity('${p.set_id}', '${p.part_num}', ${p.color_id}, this.value)"></span>
+                    <span class="missing-piece-qty-label">x<input type="number" class="input-qty-inline" value="${p.quantity}" min="1" onchange="changePieceQuantity('${p.set_id}', '${esc(p.part_num)}', ${p.color_id}, this.value)"></span>
                 </div>
             </div>
             <div class="missing-piece-actions">
-                <select class="select-status" onchange="changePieceStatus('${p.set_id}', '${p.part_num}', ${p.color_id}, this.value)">
+                <select class="select-status" onchange="changePieceStatus('${p.set_id}', '${esc(p.part_num)}', ${p.color_id}, this.value)">
                     <option value="needed" ${p.status === 'needed' ? 'selected' : ''}>Necesitada</option>
                     <option value="ordered" ${p.status === 'ordered' ? 'selected' : ''}>Pedida</option>
                     <option value="received" ${p.status === 'received' ? 'selected' : ''}>Recibida</option>
                 </select>
-                <button class="btn-delete-part" onclick="deletePiece('${p.set_id}', '${p.part_num}', ${p.color_id})">🗑️</button>
+                <button class="btn-delete-part" onclick="deletePiece('${p.set_id}', '${esc(p.part_num)}', ${p.color_id})">🗑️</button>
             </div>
         `;
         currentMissingList.appendChild(card);
@@ -2468,16 +2847,16 @@ function renderOfficialInventory() {
         card.innerHTML = `
             <div class="inventory-part-img-wrapper">
                 <span class="inventory-part-qty-badge">x${p.quantity} en set</span>
-                <img src="${p.image_url || 'images/placeholder.png'}" alt="${p.name}" style="max-width:100%; max-height:100%; object-fit:contain;" onerror="this.onerror=null; this.src='images/placeholder.png';">
+                <img src="${p.image_url || 'images/placeholder.png'}" alt="${esc(p.name)}" style="max-width:100%; max-height:100%; object-fit:contain;" onerror="this.onerror=null; this.src='images/placeholder.png';">
             </div>
             <div class="inventory-part-details">
-                <h4 class="inventory-part-name" title="${p.name}">${p.name}</h4>
-                <span class="inventory-part-code">Código: ${p.part_num}</span>
-                <span class="inventory-part-color">${p.color_name}</span>
+                <h4 class="inventory-part-name" title="${esc(p.name)}">${esc(p.name)}</h4>
+                <span class="inventory-part-code">Código: ${esc(p.part_num)}</span>
+                <span class="inventory-part-color">${esc(p.color_name)}</span>
             </div>
             <div class="inventory-part-actions">
-                <input type="number" class="input-qty-selector" id="qty-${p.part_num}-${p.color_id}" min="1" max="${p.quantity}" value="1">
-                <button class="btn-add-part" onclick="addOfficialPart('${p.part_num}', ${p.color_id})">➕ Añadir</button>
+                <input type="number" class="input-qty-selector" id="qty-${esc(p.part_num)}-${p.color_id}" min="1" max="${p.quantity}" value="1">
+                <button class="btn-add-part" onclick="addOfficialPart('${esc(p.part_num)}', ${p.color_id})">➕ Añadir</button>
             </div>
         `;
         officialInventoryGrid.appendChild(card);
@@ -2603,7 +2982,10 @@ async function addPieceFromList(event) {
         if (!response.ok) throw new Error('Error al añadir pieza');
         const data = await response.json();
 
-        missingPieces.push(data);
+        // The backend merges duplicates (same set + part + colour), so replace instead of pushing twice
+        const idx = missingPieces.findIndex(x => x.set_id === data.set_id && x.part_num === data.part_num && x.color_id === data.color_id);
+        if (idx !== -1) missingPieces[idx] = data;
+        else missingPieces.push(data);
         updateShoppingListKPIs();
         renderShoppingList();
         pieceModal.classList.add('hidden');
@@ -2771,9 +3153,9 @@ function renderMinifigsChecklistGrid() {
         card.className = `mf-check-card ${fig.present ? 'present' : 'missing'}`;
         card.innerHTML = `
             <div class="mf-status-badge">${fig.present ? '✓' : '✕'}</div>
-            <img src="${fig.img_url || 'images/placeholder.png'}" alt="${fig.name}" onerror="this.onerror=null; this.src='images/placeholder.png';">
+            <img src="${fig.img_url || 'images/placeholder.png'}" alt="${esc(fig.name)}" onerror="this.onerror=null; this.src='images/placeholder.png';">
             <span class="mf-qty">x${fig.quantity}</span>
-            <span class="mf-name" title="${fig.name}">${fig.name}</span>
+            <span class="mf-name" title="${esc(fig.name)}">${esc(fig.name)}</span>
         `;
 
         card.addEventListener('click', () => {
@@ -2800,331 +3182,542 @@ function renderMinifigsChecklistGrid() {
 
 
 
-if(navGoals) {
-    navGoals.addEventListener('click', () => {
-        if (activeView === 'goals') return;
-        activeView = 'goals';
-        
-        navGoals.classList.add('active');
-        if(navSets) navSets.classList.remove('active');
-        if(navMinifigs) navMinifigs.classList.remove('active');
-        if(navShoppingList) navShoppingList.classList.remove('active');
-        
-        if(goalsView) goalsView.classList.remove('hidden');
-        if(emptyState) emptyState.classList.add('hidden');
-        
-        document.querySelector('.stats-section').classList.add('hidden');
-        const catSection = document.querySelector('.category-selection-section');
-        if(catSection) catSection.classList.add('hidden');
-        const toolbar = document.querySelector('.toolbar-section');
-        if(toolbar) toolbar.classList.add('hidden');
-        
-        if(setsGrid) setsGrid.classList.add('hidden');
-        if(minifigsGrid) minifigsGrid.classList.add('hidden');
-        if(shoppingListView) shoppingListView.classList.add('hidden');
-        
-        if(btnAddSet) btnAddSet.classList.add('hidden');
-        if(btnAddMinifig) btnAddMinifig.classList.add('hidden');
-        if(btnAddPiece) btnAddPiece.classList.add('hidden');
-        
-        loadGoals();
+// =====================================================================
+// --- Goals (Objetivos) ---
+// =====================================================================
+let savedGoals = [];
+let goalSearchResults = [];
+let lastUsedFolder = null;
+const NEW_FOLDER_VALUE = '__new__';
+
+// --- Generic confirm dialog (replaces the browser's confirm()) ---
+function confirmDialog({ title = '¿Seguro?', message = '', confirmText = 'Eliminar', danger = true } = {}) {
+    const modal = document.getElementById('confirm-modal');
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+    const closeBtn = document.getElementById('confirm-close');
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    okBtn.textContent = confirmText;
+    okBtn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+    modal.classList.remove('hidden');
+    okBtn.focus();
+
+    return new Promise(resolve => {
+        const finish = (result) => {
+            modal.classList.add('hidden');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            closeBtn.removeEventListener('click', onCancel);
+            resolve(result);
+        };
+        const onOk = () => finish(true);
+        const onCancel = () => finish(false);
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        closeBtn.addEventListener('click', onCancel);
     });
 }
 
-let savedGoals = [];
+// --- Data helpers ---
+function realGoals() {
+    return savedGoals.filter(g => g.type !== 'folder');
+}
+
+// Folder names, including empty folders (kept as "folder" placeholder entries)
+function goalFolders() {
+    return [...new Set(savedGoals.map(g => g.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function goalLinks(item) {
+    if (item.type === 'set') {
+        const setNum = item.id.includes('-') ? item.id : `${item.id}-1`;
+        return {
+            brickeconomy: `https://www.brickeconomy.com/search?query=${encodeURIComponent(item.id)}`,
+            bricklink: `https://www.bricklink.com/v2/catalog/catalogitem.page?S=${encodeURIComponent(setNum)}`,
+            rebrickable: `https://rebrickable.com/sets/${encodeURIComponent(setNum)}/`
+        };
+    }
+    return minifigCatalogLinks(item.id, item.name);
+}
+
+// "Sale en: 7931, 9498" -> ['7931', '9498']
+function goalSetIds(goal) {
+    const m = (goal.set_info || '').match(/Sale en:\s*(.*)/);
+    if (!m || /desconocido/i.test(m[1])) return [];
+    return m[1].split(',').map(s => s.trim()).filter(Boolean);
+}
 
 async function loadGoals() {
     try {
         const res = await fetch('/api/goals');
-        savedGoals = await res.json();
+        // Goals saved before folders existed belong to the default folder
+        savedGoals = (await res.json()).map(g => ({ ...g, folder: g.folder || 'Consejo Jedi' }));
         renderGoals();
+        if (goalSearchResults.length) renderGoalSearchResults();
     } catch (e) {
-        console.error(e);
+        showError('No se pudieron cargar los objetivos.', e);
     }
+}
+
+// --- Cards (shared by search results and saved goals) ---
+function goalCardHtml(item, { saved = false } = {}) {
+    const links = goalLinks(item);
+    const isSet = item.type === 'set';
+    const alreadySaved = !saved && savedGoals.find(g => g.id === item.id && g.type !== 'folder');
+    const setIds = saved && !isSet ? goalSetIds(item) : [];
+    const ownedSet = isSet && legoSets.some(s => s.id === item.id);
+
+    let footerInfo = '';
+    if (saved && isSet) {
+        footerInfo = ownedSet
+            ? '<span class="goal-card-info owned">✓ Ya lo tienes en tu colección</span>'
+            : `<span class="goal-card-info">${esc(item.set_info && !item.set_info.startsWith('Contiene') ? item.set_info : 'Set completo')}</span>`;
+    } else if (setIds.length) {
+        const shown = setIds.slice(0, 4).map(id => `<span class="goal-chip">#${esc(id)}</span>`).join('');
+        footerInfo = `<span class="goal-card-info">Sale en</span><div class="goal-chips">${shown}${setIds.length > 4 ? `<span class="goal-chip more">+${setIds.length - 4}</span>` : ''}</div>`;
+    }
+
+    return `
+        <article class="goal-card${alreadySaved ? ' is-saved' : ''}" data-goal-id="${esc(item.id)}">
+            <div class="goal-card-stage" data-action="open" title="${saved ? 'Ver objetivo' : 'Añadir a objetivos'}">
+                <span class="goal-type-badge ${isSet ? 'set' : 'fig'}">${isSet ? '🧱 Set' : '👤 Figura'}</span>
+                ${saved ? '<button type="button" class="set-tool danger goal-card-delete" data-action="delete" title="Eliminar objetivo">🗑️</button>' : ''}
+                ${alreadySaved ? `<span class="goal-saved-badge" title="Carpeta: ${esc(alreadySaved.folder)}">✓ En objetivos</span>` : ''}
+                <img src="${esc(item.image_url || 'images/placeholder.png')}" alt="${esc(item.name)}" loading="lazy" onerror="this.onerror=null; this.src='images/placeholder.png'">
+            </div>
+            <span class="set-card-id">#${esc(item.id)}</span>
+            <h3 class="goal-card-name" data-action="open" title="${esc(item.name)}">${esc(item.name)}</h3>
+            <div class="goal-card-footer">${footerInfo}</div>
+            <div class="set-card-links">
+                <a href="${esc(links.brickeconomy)}" target="_blank" rel="noopener" class="set-link link-be">📈 BrickEconomy</a>
+                <a href="${esc(links.bricklink)}" target="_blank" rel="noopener" class="set-link link-bl">BrickLink</a>
+                <a href="${esc(links.rebrickable)}" target="_blank" rel="noopener" class="set-link link-rb">Rebrickable</a>
+            </div>
+        </article>`;
 }
 
 function renderGoals() {
-    goalsFoldersContainer.innerHTML = '';
-    if(savedGoals.length === 0) {
-        goalsFoldersContainer.innerHTML = '<p>Aún no tienes objetivos guardados. ¡Busca una minifigura arriba!</p>';
+    const goals = realGoals();
+    const folders = goalFolders();
+    const countEl = document.getElementById('goals-total-count');
+    if (countEl) countEl.textContent = goals.length ? `${goals.length}` : '';
+
+    if (folders.length === 0) {
+        goalsFoldersContainer.innerHTML = `
+            <div class="empty-state goals-empty">
+                <div class="empty-icon">🎯</div>
+                <h3>Aún no tienes objetivos</h3>
+                <p>Busca arriba una minifigura que quieras conseguir y añádela a una carpeta.</p>
+            </div>`;
         return;
     }
-    
-    // Group goals by folder
-    const folders = {};
-    savedGoals.forEach(g => {
-        const f = g.folder || 'Consejo Jedi';
-        if(!folders[f]) folders[f] = [];
-        folders[f].push(g);
-    });
-    
-    // Render each folder
-    Object.keys(folders).sort().forEach(folderName => {
-        const folderDiv = document.createElement('div');
-        folderDiv.className = 'goal-folder';
-        
-        const titleDiv = document.createElement('div');
-        titleDiv.className = 'kpi-group-title';
-        titleDiv.innerHTML = `<h2>📁 ${folderName}</h2>`;
-        folderDiv.appendChild(titleDiv);
-        
-        const gridDiv = document.createElement('div');
-        gridDiv.className = 'minifigs-grid';
-        
-        folders[folderName].forEach(g => {
-            if (g.type === 'folder') return;
-            const card = document.createElement('div');
-            card.innerHTML = `
-                <div class="minifig-image-wrapper" style="cursor:pointer;" onclick="openGoalDetail('${g.id}', '${g.name.replace(/'/g, "\'")}', '${g.image_url}', '${g.type}')">
-                    <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 0.7em; color: white; border: 1px solid var(--accent-primary); z-index: 10;">OBJETIVO</div>
-                    <img src="${g.image_url}" alt="${g.name}" class="minifig-image" style="object-fit: contain;" onerror="this.src='images/placeholder.png'">
+
+    goalsFoldersContainer.innerHTML = folders.map(folder => {
+        const items = goals.filter(g => g.folder === folder);
+        return `
+            <section class="goal-folder" data-folder="${esc(folder)}">
+                <div class="goal-folder-header">
+                    <h3>📁 ${esc(folder)} <span class="goals-count">${items.length}</span></h3>
+                    ${items.length === 0 ? `<button type="button" class="btn-link-danger" data-action="delete-folder" title="Eliminar carpeta vacía">Eliminar carpeta</button>` : ''}
                 </div>
-                <div class="minifig-info" style="display:flex; flex-direction:column; justify-content:space-between; flex-grow:1;">
-                    <div>
-                        <div class="minifig-id">${g.id}</div>
-                        <h4 class="minifig-name" style="font-size: 0.95rem; margin-bottom: 5px;">${g.name}</h4>
-                        ${g.set_info ? `<div style="font-size: 0.75rem; color: #aaa; margin-top: 5px; line-height: 1.2;">${g.set_info}</div>` : ''}
-                    </div>
-                    <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px;">
-                        <a href="https://rebrickable.com/${g.type === 'set' ? 'sets' : 'minifigs'}/${(g.type === 'set' && !g.id.includes('-')) ? g.id + '-1' : g.id}/" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; font-size: 0.8rem;">Ver en Rebrickable</a>
-                        <a href="https://www.bricklink.com/v2/search.page?q=${encodeURIComponent(g.name)}" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; font-size: 0.8rem; background: #0055A5; color: white; margin-top: 5px;">BrickLink</a>
-                        <a href="https://www.brickeconomy.com/search?query=${encodeURIComponent(g.name)}" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; font-size: 0.8rem; background: #28a745; color: white; margin-top: 5px;">BrickEconomy</a>
-                        <button class="btn btn-danger btn-sm" onclick="deleteGoal('${g.id}')">Eliminar</button>
-                    </div>
-                </div>
-            `;
-            card.className = 'minifig-card';
-            gridDiv.appendChild(card);
-        });
-        
-        folderDiv.appendChild(gridDiv);
-        goalsFoldersContainer.appendChild(folderDiv);
-    });
+                ${items.length
+                    ? `<div class="goals-grid">${items.map(g => goalCardHtml(g, { saved: true })).join('')}</div>`
+                    : '<p class="goal-folder-empty">Carpeta vacía. Busca una figura arriba y elige esta carpeta al añadirla.</p>'}
+            </section>`;
+    }).join('');
 }
 
-async function deleteGoal(id) {
-    if(confirm('¿Eliminar objetivo?')) {
-        await fetch(`/api/goals/${id}`, { method: 'DELETE' });
-        loadGoals();
-    }
+function renderGoalSearchResults() {
+    const grid = document.getElementById('goals-search-grid');
+    grid.innerHTML = goalSearchResults.length
+        ? goalSearchResults.map(m => goalCardHtml({ ...m, type: 'minifig' })).join('')
+        : '<p class="goals-hint">No se encontraron minifiguras con ese nombre.</p>';
 }
 
-if(btnSearchGoals) {
-    const btnClearGoals = document.getElementById('btn-clear-goals');
-    if (btnClearGoals) {
-        btnClearGoals.addEventListener('click', () => {
-            goalsSearchInput.value = '';
-            goalsSearchResults.innerHTML = '';
-            goalsSearchResults.classList.add('hidden');
-        });
-    }
-    btnSearchGoals.addEventListener('click', async () => {
-        const q = goalsSearchInput.value.trim();
-        if(!q) return;
-        
-        goalsSearchResults.innerHTML = '<div class="spinner"></div><p>Buscando en Rebrickable...</p>';
-        goalsSearchResults.classList.remove('hidden');
-        
-        try {
-            const res = await fetch(`/api/rebrickable/search-minifigs?search=${encodeURIComponent(q)}`);
-            const data = await res.json();
-            
-            goalsSearchResults.innerHTML = '<h3>Resultados (click en una para ver en qué sets sale o añadirla)</h3><div class="minifigs-grid" id="goals-search-grid"></div>';
-            const grid = document.getElementById('goals-search-grid');
-            
-            data.forEach(m => {
-                const card = document.createElement('div');
-                
-                const safeName = m.name.replace(/'/g, "\\'");
-                card.innerHTML = `
-                    <div class="minifig-image-wrapper" style="cursor:pointer;" onclick="openGoalDetail('${m.id}', '${m.name.replace(/'/g, "\'")}', '${m.image_url}', 'minifig')">
-                        <img src="${m.image_url}" alt="${m.name}" class="minifig-image" style="object-fit: contain;" onerror="this.src='images/placeholder.png'">
-                    </div>
-                    <div class="minifig-info" style="display:flex; flex-direction:column; justify-content:space-between; flex-grow:1;">
-                        <div>
-                            <div class="minifig-id">${m.id}</div>
-                            <h4 class="minifig-name" style="font-size: 0.95rem; margin-bottom: 5px;">${m.name}</h4>
-                        </div>
-                        <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px;">
-                            <a href="https://rebrickable.com/minifigs/${m.id}/" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; margin-bottom:5px; font-size: 0.8rem;">Ver en Rebrickable</a>
-                            <a href="https://www.bricklink.com/v2/search.page?q=${encodeURIComponent(m.name)}" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; margin-bottom:5px; font-size: 0.8rem; background: #0055A5; color: white;">BrickLink</a>
-                            <a href="https://www.brickeconomy.com/search?query=${encodeURIComponent(m.name)}" target="_blank" class="btn btn-secondary btn-sm" style="text-align:center; text-decoration:none; margin-bottom:5px; font-size: 0.8rem; background: #28a745; color: white;">BrickEconomy</a>
-                            <button class="btn btn-primary btn-sm" onclick="showSetsForGoalMinifig('${m.id}', '${safeName}', '${m.image_url}', this)">Ver Sets / Añadir</button>
-                            <div class="goal-sets-list hidden" style="margin-top: 10px; padding: 5px;"></div>
-                        </div>
-                    </div>
-                `;
-                card.className = 'minifig-card';
-                grid.appendChild(card);
-            });
-        } catch (e) {
-            goalsSearchResults.innerHTML = '<p>Error al buscar.</p>';
-        }
-    });
-}
-
-async function showSetsForGoalMinifig(id, name, img, btn) {
-    const listDiv = btn.nextElementSibling;
-    if(!listDiv.classList.contains('hidden')) {
-        listDiv.classList.add('hidden');
-        return;
-    }
-    
-    listDiv.innerHTML = 'Cargando sets...';
-    listDiv.classList.remove('hidden');
-    
+async function searchGoals(query) {
+    const resultsBox = document.getElementById('goals-search-results');
+    const grid = document.getElementById('goals-search-grid');
+    const title = document.getElementById('goals-results-title');
+    resultsBox.classList.remove('hidden');
+    title.textContent = `Buscando «${query}»…`;
+    grid.innerHTML = '<div class="loading-inline"><div class="spinner"></div><span>Buscando en Rebrickable…</span></div>';
     try {
-        const res = await fetch(`/api/rebrickable/minifigs/${id}/sets`);
-        const sets = await res.json();
-        
-        const safeName = name.replace(/'/g, "\\'");
-        let html = `<button class="btn btn-primary btn-sm" style="width:100%; margin-bottom:10px;" onclick="addGoal('${id}','${safeName}','minifig','${img}')">Añadir Figura Suelta</button>`;
-        
-        if(sets.length > 0) {
-            html += `<p>O añade un Set que la contenga:</p>`;
-            sets.forEach(s => {
-                const safeSetName = s.name.replace(/'/g, "\\'");
-                html += `
-                <div class="goal-set-item" style="margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                    <img src="${s.image_url}" onerror="this.src='images/placeholder.png'" style="width: 50px; height: 50px; object-fit: contain;">
-                    <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
-                        <div style="font-size:0.85rem; line-height: 1.2;">${s.name}</div>
-                        <div style="display:flex; gap:5px; flex-wrap: wrap;">
-                            <a href="https://rebrickable.com/sets/${s.id.includes('-') ? s.id : s.id + '-1'}/" target="_blank" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 5px; text-decoration:none; display: inline-block;">Rebrickable</a>
-                            <button class="btn btn-outline-parts btn-sm" style="font-size:0.75rem; padding:2px 5px;" onclick="addGoal('${s.id}','${safeSetName}','set','${s.image_url}')">+ Objetivo</button>
-                        </div>
-                    </div>
-                </div>`;
-            });
-        } else {
-            html += '<p>No se encontraron sets para esta figura.</p>';
-        }
-        listDiv.innerHTML = html;
-        
+        const res = await fetch(`/api/rebrickable/search-minifigs?search=${encodeURIComponent(query)}`);
+        if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+        goalSearchResults = await res.json();
+        title.textContent = `${goalSearchResults.length} resultado${goalSearchResults.length === 1 ? '' : 's'} para «${query}»`;
+        renderGoalSearchResults();
     } catch (e) {
-        listDiv.innerHTML = 'Error al cargar sets.';
+        goalSearchResults = [];
+        title.textContent = 'Error en la búsqueda';
+        grid.innerHTML = `<p class="goals-hint">No se pudo buscar en Rebrickable: ${esc(e.message)}</p>`;
     }
 }
 
-let lastUsedFolder = 'Consejo Jedi';
-async function addGoal(id, name, type, img) {
-    const folder = prompt('¿A qué carpeta quieres añadirlo? (ej: Consejo Jedi, Villanos, Siths)', lastUsedFolder);
-    if (folder === null) return; // user cancelled
-    lastUsedFolder = folder.trim() || 'Consejo Jedi';
-
-    try {
-        let set_info = '';
-        if (type === 'minifig') {
-            try {
-                const setsRes = await fetch(`/api/rebrickable/minifigs/${id}/sets`);
-                if (setsRes.ok) {
-                    const sets = await setsRes.json();
-                    if (sets && sets.length > 0) {
-                        set_info = `Sale en: ${sets.map(s => s.id).join(', ')}`;
-                    } else {
-                        set_info = 'Sale en: Desconocido';
-                    }
-                }
-            } catch(e) {}
-        } else if (type === 'set') {
-            set_info = `Set: ${id}`;
-        }
-
-        const res = await fetch('/api/goals', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id, name, type, image_url: img, folder: lastUsedFolder, set_info: set_info})
-        });
-        if(res.ok) {
-            loadGoals();
-        } else {
-            const e = await res.json();
-            alert(e.detail || 'Error al añadir');
-        }
-    } catch(e) {
-        alert('Error de conexión');
-    }
-}
-
-async function createEmptyFolder() {
-    const folder = prompt('Nombre de la nueva carpeta:');
-    if (!folder || !folder.trim()) return;
-    
-    try {
-        const res = await fetch('/api/goals', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id: 'folder_' + Date.now(), name: '[Carpeta Vacía]', type: 'folder', image_url: '', folder: folder.trim(), set_info: ''})
-        });
-        if(res.ok) {
-            loadGoals();
-        }
-    } catch(e) {
-        alert('Error');
-    }
-}
-
+// --- Goal modal: 'add' (from search), 'saved' (existing goal), 'view' (figure from your collection) ---
+const goalModal = { mode: 'add', item: null, sets: [], selected: null, requestId: 0 };
 const goalDetailModal = document.getElementById('goal-detail-modal');
-const btnCloseGoalDetail = document.getElementById('btn-close-goal-detail');
 
-if (btnCloseGoalDetail) {
-    btnCloseGoalDetail.addEventListener('click', () => {
-        if(goalDetailModal) goalDetailModal.classList.add('hidden');
-    });
+function closeGoalModal() {
+    goalDetailModal.classList.add('hidden');
+    goalModal.requestId++;
 }
 
-async function openGoalDetail(id, name, img_url, type) {
-    if(!goalDetailModal) return;
-    
-    document.getElementById('goal-detail-title').textContent = name;
-    document.getElementById('goal-detail-id-badge').textContent = '#' + id;
-    document.getElementById('goal-detail-image').src = img_url;
-    document.getElementById('goal-detail-type').textContent = type === 'set' ? 'OBJETIVO / SET' : 'OBJETIVO / MINIFIGURA';
-    
-    document.getElementById('goal-detail-rebrickable-link').href = `https://rebrickable.com/${type === 'set' ? 'sets' : 'minifigs'}/${(type === 'set' && !id.includes('-')) ? id + '-1' : id}/`;
-    document.getElementById('goal-detail-bricklink-link').href = `https://www.bricklink.com/v2/search.page?q=${encodeURIComponent(name)}`;
-    document.getElementById('goal-detail-brickeconomy-link').href = `https://www.brickeconomy.com/search?query=${encodeURIComponent(name)}`;
-    
-    const setsGrid = document.getElementById('goal-detail-sets-grid');
-    const spinner = document.getElementById('goal-detail-sets-loading');
-    
-    setsGrid.innerHTML = '';
-    
-    if (type === 'minifig') {
-        spinner.classList.remove('hidden');
-        goalDetailModal.classList.remove('hidden');
-        
-        try {
-            const res = await fetch(`/api/rebrickable/minifigs/${id}/sets`);
-            const sets = await res.json();
-            
-            spinner.classList.add('hidden');
-            
-            if (sets && sets.length > 0) {
-                sets.forEach(s => {
-                    const setCard = document.createElement('div');
-                    setCard.className = 'part-item-card';
-                    setCard.innerHTML = `
-                        <div class="part-item-img-wrapper">
-                            <img src="${s.image_url}" onerror="this.src='images/placeholder.png'">
-                        </div>
-                        <div class="part-item-info">
-                            <div class="part-item-id">Set ${s.id}</div>
-                            <div class="part-item-name" style="font-size: 0.8rem; margin-top: 5px;">${s.name}</div>
-                            <a href="https://rebrickable.com/sets/${s.id.includes('-') ? s.id : s.id + '-1'}/" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:10px; width:100%; font-size:0.75rem;">Ver en Rebrickable</a>
-                        </div>
-                    `;
-                    setsGrid.appendChild(setCard);
+// Entry point used by the minifigure cards of your collection
+function openGoalDetail(id, name, img_url, type) {
+    openGoalModal('view', { id, name, image_url: img_url, type });
+}
+
+function fillFolderSelect(current) {
+    const select = document.getElementById('goal-folder-select');
+    const input = document.getElementById('goal-new-folder-input');
+    const folders = goalFolders();
+    select.innerHTML = folders.map(f => `<option value="${esc(f)}">📁 ${esc(f)}</option>`).join('') +
+        `<option value="${NEW_FOLDER_VALUE}">➕ Nueva carpeta…</option>`;
+    const preferred = current || (lastUsedFolder && folders.includes(lastUsedFolder) ? lastUsedFolder : folders[0]);
+    select.value = preferred || NEW_FOLDER_VALUE;
+    input.value = '';
+    input.classList.toggle('hidden', select.value !== NEW_FOLDER_VALUE);
+}
+
+function goalOptionHtml(opt, { selectable, selected }) {
+    const owned = opt.type === 'set' && legoSets.some(s => s.id === opt.id);
+    return `
+        <button type="button" class="goal-option${selected ? ' selected' : ''}${selectable ? '' : ' static'}${owned ? ' owned' : ''}"
+                data-option-id="${esc(opt.id)}" data-option-type="${opt.type}" ${selectable ? '' : 'tabindex="-1"'}>
+            <div class="goal-option-img">
+                ${owned ? '<span class="goal-set-owned-badge">✓ Lo tienes</span>' : ''}
+                ${selectable ? '<span class="goal-option-check">✓</span>' : ''}
+                <img src="${esc(opt.image_url || 'images/placeholder.png')}" alt="" loading="lazy" onerror="this.onerror=null; this.src='images/placeholder.png'">
+            </div>
+            <span class="goal-option-kind">${opt.type === 'set' ? `Set #${esc(opt.id)}` : 'Figura suelta'}</span>
+            <span class="goal-option-name" title="${esc(opt.name)}">${esc(opt.name)}</span>
+        </button>`;
+}
+
+function renderGoalOptions() {
+    const grid = document.getElementById('goal-detail-sets-grid');
+    const { mode, item, sets, selected } = goalModal;
+    const selectable = mode === 'add';
+
+    const options = [];
+    if (selectable) options.push({ id: item.id, name: item.name, image_url: item.image_url, type: 'minifig' });
+    sets.forEach(s => options.push({ id: s.id, name: s.name, image_url: s.image_url, type: 'set' }));
+
+    if (item.type === 'set') {
+        grid.innerHTML = goalOptionHtml({ ...item, type: 'set' }, { selectable: false, selected: false });
+        return;
+    }
+    if (options.length === 0) {
+        grid.innerHTML = '<p class="goal-sets-empty">No se encontraron sets para esta minifigura.</p>';
+        return;
+    }
+    grid.innerHTML = options.map(o => goalOptionHtml(o, {
+        selectable,
+        selected: selectable && selected && selected.id === o.id && selected.type === o.type
+    })).join('');
+}
+
+async function openGoalModal(mode, item) {
+    const requestId = ++goalModal.requestId;
+    Object.assign(goalModal, { mode, item, sets: [], selected: mode === 'add' ? { id: item.id, type: 'minifig' } : null });
+
+    const isSet = item.type === 'set';
+    const kicker = {
+        add: 'AÑADIR OBJETIVO',
+        saved: `OBJETIVO · 📁 ${item.folder || ''}`.toUpperCase(),
+        view: 'MINIFIGURA DE TU COLECCIÓN'
+    }[mode];
+    document.getElementById('goal-detail-type').textContent = kicker;
+    document.getElementById('goal-detail-title').textContent = item.name;
+    document.getElementById('goal-detail-id-badge').textContent = `#${item.id}`;
+    const img = document.getElementById('goal-detail-image');
+    img.onerror = () => { img.onerror = null; img.src = 'images/placeholder.png'; };
+    img.src = item.image_url || 'images/placeholder.png';
+
+    const links = goalLinks(item);
+    document.getElementById('goal-detail-brickeconomy-link').href = links.brickeconomy;
+    document.getElementById('goal-detail-bricklink-link').href = links.bricklink;
+    document.getElementById('goal-detail-rebrickable-link').href = links.rebrickable;
+
+    // Steps & footer per mode
+    document.getElementById('goal-step1-title').textContent = mode === 'add'
+        ? '¿Qué quieres conseguir?'
+        : (isSet ? 'Objetivo' : 'Sets en los que aparece');
+    const step2 = document.getElementById('goal-folder-select').closest('.goal-step');
+    step2.classList.toggle('hidden', mode === 'view');
+    document.querySelectorAll('#goal-detail-modal .goal-step-num').forEach(n => n.classList.toggle('hidden', mode === 'view'));
+    if (mode !== 'view') fillFolderSelect(mode === 'saved' ? item.folder : null);
+
+    const saveBtn = document.getElementById('goal-btn-save');
+    saveBtn.classList.toggle('hidden', mode === 'view');
+    saveBtn.textContent = mode === 'add' ? '🎯 Añadir objetivo' : '💾 Guardar carpeta';
+    saveBtn.disabled = false;
+    document.getElementById('goal-btn-cancel').textContent = mode === 'view' ? 'Cerrar' : 'Cancelar';
+    document.getElementById('goal-btn-delete').classList.toggle('hidden', mode !== 'saved');
+
+    const grid = document.getElementById('goal-detail-sets-grid');
+    const loading = document.getElementById('goal-detail-sets-loading');
+    grid.innerHTML = '';
+    goalDetailModal.classList.remove('hidden');
+
+    if (isSet) {
+        loading.classList.add('hidden');
+        renderGoalOptions();
+        return;
+    }
+
+    // BrickLink-style codes (sw0001c...) are unknown to Rebrickable
+    if (!item.id.startsWith('fig-')) {
+        loading.classList.add('hidden');
+        grid.innerHTML = `
+            <p class="goal-sets-empty">
+                Esta figura usa el código de BrickLink <strong>${esc(item.id)}</strong>, que Rebrickable no reconoce.<br>
+                <a href="https://www.bricklink.com/catalogItemIn.asp?M=${encodeURIComponent(item.id)}&in=S" target="_blank" rel="noopener">Ver en qué sets aparece en BrickLink ↗</a>
+            </p>`;
+        return;
+    }
+
+    loading.classList.remove('hidden');
+    try {
+        const res = await fetch(`/api/rebrickable/minifigs/${encodeURIComponent(item.id)}/sets`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const sets = await res.json();
+        if (requestId !== goalModal.requestId) return;
+        goalModal.sets = sets || [];
+    } catch (e) {
+        if (requestId !== goalModal.requestId) return;
+        goalModal.sets = [];
+        console.error('Error loading sets for minifig:', e);
+    }
+    loading.classList.add('hidden');
+    renderGoalOptions();
+}
+
+function resolveGoalFolder() {
+    const select = document.getElementById('goal-folder-select');
+    if (select.value !== NEW_FOLDER_VALUE) return select.value;
+    const name = document.getElementById('goal-new-folder-input').value.trim();
+    if (!name) {
+        showNotification('Escribe un nombre para la nueva carpeta');
+        document.getElementById('goal-new-folder-input').focus();
+        return null;
+    }
+    return name;
+}
+
+async function saveGoalModal() {
+    const { mode, item, sets, selected } = goalModal;
+    const folder = resolveGoalFolder();
+    if (!folder) return;
+    const saveBtn = document.getElementById('goal-btn-save');
+    saveBtn.disabled = true;
+
+    try {
+        if (mode === 'saved') {
+            if (folder !== item.folder) {
+                const res = await fetch(`/api/goals/${encodeURIComponent(item.id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder })
                 });
-            } else {
-                setsGrid.innerHTML = '<p>No se encontraron sets para esta minifigura.</p>';
+                if (!res.ok) throw new Error((await res.json()).detail || 'No se pudo mover');
+                showNotification(`📁 Movido a «${folder}»`);
             }
-        } catch (e) {
-            spinner.classList.add('hidden');
-            setsGrid.innerHTML = '<p>Error al cargar los sets.</p>';
+        } else {
+            let payload;
+            if (selected && selected.type === 'set') {
+                const s = sets.find(x => x.id === selected.id);
+                payload = { id: s.id, name: s.name, type: 'set', image_url: s.image_url || '', folder,
+                            set_info: `Contiene: ${item.name}` };
+            } else {
+                const setInfo = sets.length ? `Sale en: ${sets.map(s => s.id).join(', ')}` : '';
+                payload = { id: item.id, name: item.name, type: 'minifig', image_url: item.image_url || '', folder,
+                            set_info: setInfo };
+            }
+            const res = await fetch('/api/goals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || 'No se pudo añadir');
+            showNotification(`🎯 «${payload.name}» añadido a ${folder}`);
         }
-    } else {
-        setsGrid.innerHTML = '<p>Esto es un set, no contiene otros sets.</p>';
-        goalDetailModal.classList.remove('hidden');
+        lastUsedFolder = folder;
+        closeGoalModal();
+        await loadGoals();
+    } catch (e) {
+        showError('No se pudo guardar el objetivo.', e);
+    } finally {
+        saveBtn.disabled = false;
     }
 }
+
+async function deleteGoal(goal) {
+    const ok = await confirmDialog({
+        title: '¿Eliminar objetivo?',
+        message: `Se quitará «${goal.name}» de la carpeta «${goal.folder}».`
+    });
+    if (!ok) return false;
+    try {
+        const res = await fetch(`/api/goals/${encodeURIComponent(goal.id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('No se pudo eliminar');
+        showNotification('Objetivo eliminado');
+        await loadGoals();
+        return true;
+    } catch (e) {
+        showError('No se pudo eliminar el objetivo.', e);
+        return false;
+    }
+}
+
+async function createGoalFolder(name) {
+    if (goalFolders().some(f => f.toLowerCase() === name.toLowerCase())) {
+        showNotification(`La carpeta «${name}» ya existe`);
+        return false;
+    }
+    try {
+        const res = await fetch('/api/goals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: 'folder_' + Date.now(), name: '[Carpeta Vacía]', type: 'folder', image_url: '', folder: name, set_info: '' })
+        });
+        if (!res.ok) throw new Error('No se pudo crear la carpeta');
+        showNotification(`📁 Carpeta «${name}» creada`);
+        await loadGoals();
+        return true;
+    } catch (e) {
+        showError('No se pudo crear la carpeta.', e);
+        return false;
+    }
+}
+
+async function deleteGoalFolder(folder) {
+    const placeholders = savedGoals.filter(g => g.folder === folder && g.type === 'folder');
+    try {
+        for (const p of placeholders) {
+            await fetch(`/api/goals/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+        }
+        showNotification(`Carpeta «${folder}» eliminada`);
+        await loadGoals();
+    } catch (e) {
+        showError('No se pudo eliminar la carpeta.', e);
+    }
+}
+
+// --- Wiring ---
+(function setupGoals() {
+    if (navGoals) {
+        navGoals.addEventListener('click', () => {
+            if (activeView === 'goals') return;
+            activeView = 'goals';
+
+            navGoals.classList.add('active');
+            if (navSets) navSets.classList.remove('active');
+            if (navMinifigs) navMinifigs.classList.remove('active');
+            if (navShoppingList) navShoppingList.classList.remove('active');
+
+            if (goalsView) goalsView.classList.remove('hidden');
+            if (emptyState) emptyState.classList.add('hidden');
+
+            document.querySelector('.stats-section').classList.add('hidden');
+            const catSection = document.querySelector('.category-selection-section');
+            if (catSection) catSection.classList.add('hidden');
+            setMainToolbarVisible(false);
+            if (categoryHero) categoryHero.classList.add('hidden');
+
+            if (setsGrid) setsGrid.classList.add('hidden');
+            if (minifigsGrid) minifigsGrid.classList.add('hidden');
+            if (shoppingListView) shoppingListView.classList.add('hidden');
+
+            if (btnAddSet) btnAddSet.classList.add('hidden');
+            if (btnAddMinifig) btnAddMinifig.classList.add('hidden');
+            if (btnAddPiece) btnAddPiece.classList.add('hidden');
+
+            loadGoals();
+        });
+    }
+
+    document.getElementById('goals-search-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const q = goalsSearchInput.value.trim();
+        if (q) searchGoals(q);
+    });
+
+    document.getElementById('btn-clear-goals')?.addEventListener('click', () => {
+        goalsSearchInput.value = '';
+        goalSearchResults = [];
+        goalsSearchResults.classList.add('hidden');
+    });
+
+    // New folder inline form
+    const newFolderForm = document.getElementById('new-folder-form');
+    const newFolderInput = document.getElementById('new-folder-input');
+    document.getElementById('btn-new-folder')?.addEventListener('click', () => {
+        newFolderForm.classList.toggle('hidden');
+        if (!newFolderForm.classList.contains('hidden')) newFolderInput.focus();
+    });
+    document.getElementById('btn-cancel-new-folder')?.addEventListener('click', () => {
+        newFolderInput.value = '';
+        newFolderForm.classList.add('hidden');
+    });
+    newFolderForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = newFolderInput.value.trim();
+        if (!name) return;
+        if (await createGoalFolder(name)) {
+            newFolderInput.value = '';
+            newFolderForm.classList.add('hidden');
+        }
+    });
+
+    // Search result cards: open the "add" modal
+    document.getElementById('goals-search-grid')?.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-action="open"]')) return;
+        const card = e.target.closest('.goal-card');
+        const result = goalSearchResults.find(m => m.id === card?.dataset.goalId);
+        if (result) openGoalModal('add', { ...result, type: 'minifig' });
+    });
+
+    // Saved goal cards: open / delete; empty folders: delete
+    goalsFoldersContainer?.addEventListener('click', async (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+        if (action === 'delete-folder') {
+            const folder = actionEl.closest('.goal-folder')?.dataset.folder;
+            if (folder) deleteGoalFolder(folder);
+            return;
+        }
+        const card = e.target.closest('.goal-card');
+        const goal = savedGoals.find(g => g.id === card?.dataset.goalId);
+        if (!goal) return;
+        if (action === 'delete') deleteGoal(goal);
+        else if (action === 'open') openGoalModal('saved', goal);
+    });
+
+    // Modal: option selection, folder picker, buttons
+    document.getElementById('goal-detail-sets-grid')?.addEventListener('click', (e) => {
+        const opt = e.target.closest('.goal-option');
+        if (!opt || goalModal.mode !== 'add') return;
+        goalModal.selected = { id: opt.dataset.optionId, type: opt.dataset.optionType };
+        renderGoalOptions();
+    });
+    document.getElementById('goal-folder-select')?.addEventListener('change', (e) => {
+        const input = document.getElementById('goal-new-folder-input');
+        const isNew = e.target.value === NEW_FOLDER_VALUE;
+        input.classList.toggle('hidden', !isNew);
+        if (isNew) input.focus();
+    });
+    document.getElementById('goal-new-folder-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveGoalModal(); }
+    });
+    document.getElementById('btn-close-goal-detail')?.addEventListener('click', closeGoalModal);
+    document.getElementById('goal-btn-cancel')?.addEventListener('click', closeGoalModal);
+    document.getElementById('goal-btn-save')?.addEventListener('click', saveGoalModal);
+    document.getElementById('goal-btn-delete')?.addEventListener('click', async () => {
+        if (goalModal.mode !== 'saved') return;
+        if (await deleteGoal(goalModal.item)) closeGoalModal();
+    });
+})();
