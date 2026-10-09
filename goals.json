@@ -1,80 +1,170 @@
 [
-    {
-        "id": "fig-003786",
-        "name": "Shaak Ti",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003786/171745.jpg",
-        "set_info": "Sale en: 7931"
-    },
-    {
-        "id": "fig-003913",
-        "name": "Kit Fisto, Cape",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003913/66440.jpg",
-        "set_info": "Sale en: 9526"
-    },
-    {
-        "id": "fig-003690",
-        "name": "Kit Fisto",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003690/65324.jpg",
-        "set_info": "Sale en: 7661, 8088, 852947"
-    },
-    {
-        "id": "fig-003776",
-        "name": "Ki-Adi-Mundi, Plain Legs",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003776/68656.jpg",
-        "set_info": "Sale en: 7959"
-    },
-    {
-        "id": "fig-003787",
-        "name": "Saesee Tiin, No Cape",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003787/106093.jpg",
-        "set_info": "Sale en: 7931, 9498"
-    },
-    {
-        "id": "fig-003763",
-        "name": "Eeth Koth",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003763/81877.jpg",
-        "set_info": "Sale en: 7964"
-    },
-    {
-        "id": "fig-003880",
-        "name": "Even Piell",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003880/69092.jpg",
-        "set_info": "Sale en: 9498"
-    },
-    {
-        "id": "fig-004012",
-        "name": "Coleman Trebor",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-004012/71463.jpg",
-        "set_info": "Sale en: 75019"
-    },
-    {
-        "id": "fig-003977",
-        "name": "Stass Allie",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003977/60628.jpg",
-        "set_info": "Sale en: 75016"
-    },
-    {
-        "id": "fig-003922",
-        "name": "Agen Kolar with Cape",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003922/83558.jpg",
-        "set_info": "Sale en: 9526"
-    },
-    {
-        "id": "fig-003855",
-        "name": "General Grievous, Printed, Tan",
-        "type": "minifig",
-        "image_url": "https://cdn.rebrickable.com/media/sets/fig-003855/69983.jpg",
-        "folder": "Villanos",
-        "set_info": "Sale en: 8095, 9515"
-    }
+  {
+    "id": "fig-003786",
+    "name": "Shaak Ti",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003786/171745.jpg",
+    "set_info": "Sale en: 7931",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003913",
+    "name": "Kit Fisto, Cape",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003913/66440.jpg",
+    "set_info": "Sale en: 9526",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003690",
+    "name": "Kit Fisto",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003690/65324.jpg",
+    "set_info": "Sale en: 7661, 8088, 852947",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003776",
+    "name": "Ki-Adi-Mundi, Plain Legs",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003776/68656.jpg",
+    "set_info": "Sale en: 7959",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003787",
+    "name": "Saesee Tiin, No Cape",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003787/106093.jpg",
+    "set_info": "Sale en: 7931, 9498",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003763",
+    "name": "Eeth Koth",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003763/81877.jpg",
+    "set_info": "Sale en: 7964",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003880",
+    "name": "Even Piell",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003880/69092.jpg",
+    "set_info": "Sale en: 9498",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-004012",
+    "name": "Coleman Trebor",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-004012/71463.jpg",
+    "set_info": "Sale en: 75019",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003977",
+    "name": "Stass Allie",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003977/60628.jpg",
+    "set_info": "Sale en: 75016",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003922",
+    "name": "Agen Kolar with Cape",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003922/83558.jpg",
+    "set_info": "Sale en: 9526",
+    "folder": "Consejo Jedi"
+  },
+  {
+    "id": "fig-003855",
+    "name": "General Grievous, Printed, Tan",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-003855/69983.jpg",
+    "folder": "Villanos",
+    "set_info": "Sale en: 8095, 9515"
+  },
+  {
+    "id": "fig-004023",
+    "name": "Count Dooku, White Hair",
+    "type": "minifig",
+    "image_url": "https://cdn.rebrickable.com/media/sets/fig-004023/69090.jpg",
+    "folder": "Villanos",
+    "set_info": "Sale en: 75017"
+  },
+  {
+    "id": "75135",
+    "name": "Obi-Wan's Jedi Interceptor",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75135-1/34115.jpg",
+    "folder": "Interceptores Jedi",
+    "set_info": "Set 2016 · 215 piezas"
+  },
+  {
+    "id": "75281",
+    "name": "Anakin's Jedi Interceptor",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75281-1/67325.jpg",
+    "folder": "Interceptores Jedi",
+    "set_info": "Set 2020 · 248 piezas"
+  },
+  {
+    "id": "75401",
+    "name": "Ahsoka's Jedi Interceptor",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75401-1/148962.jpg",
+    "folder": "Interceptores Jedi",
+    "set_info": "Set 2025 · 290 piezas"
+  },
+  {
+    "id": "75360",
+    "name": "Yoda's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75360-1/123571.jpg",
+    "folder": "Interceptores Jedi",
+    "set_info": "Set 2023 · 253 piezas"
+  },
+  {
+    "id": "8093",
+    "name": "Plo Koon's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/8093-1/9871.jpg",
+    "folder": "Cazas Jedi en pico (Delta-7)",
+    "set_info": "Set 2010 · 175 piezas"
+  },
+  {
+    "id": "7868",
+    "name": "Mace Windu's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/7868-1/49460.jpg",
+    "folder": "Cazas Jedi en pico (Delta-7)",
+    "set_info": "Set 2011 · 309 piezas"
+  },
+  {
+    "id": "9498",
+    "name": "Saesee Tiin's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/9498-1/11325.jpg",
+    "folder": "Cazas Jedi en pico (Delta-7)",
+    "set_info": "Set 2012 · 244 piezas"
+  },
+  {
+    "id": "75214",
+    "name": "Anakin's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75214-1/4606.jpg",
+    "folder": "Cazas Jedi en pico (Delta-7)",
+    "set_info": "Set 2018 · 247 piezas"
+  },
+  {
+    "id": "75333",
+    "name": "Obi-Wan Kenobi's Jedi Starfighter",
+    "type": "set",
+    "image_url": "https://cdn.rebrickable.com/media/sets/75333-1/103049.jpg",
+    "folder": "Cazas Jedi en pico (Delta-7)",
+    "set_info": "Set 2022 · 282 piezas"
+  }
 ]
