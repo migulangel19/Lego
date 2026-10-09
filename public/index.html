@@ -36,6 +36,7 @@
             <button id="nav-sets" class="nav-btn active">🧱 Mis Sets de Lego</button>
             <button id="nav-minifigs" class="nav-btn">👥 Colección de Minifiguras</button>
             <button id="nav-shopping-list" class="nav-btn">🛒 Lista de Compras</button>
+            <button id="nav-goals" class="nav-btn">🎯 Objetivos</button>
         </nav>
 
         <!-- KPI Grid (Doble Vista: Inversión vs Colección/Legacy y Minifiguras) -->
@@ -85,6 +86,13 @@
                             <span class="kpi-label">Joyas Legacy de la Infancia</span>
                             <h3 class="kpi-value" id="val-legacy-count">0 sets</h3>
                             <span class="kpi-sub">Adquiridos sin coste de compra</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-parts-cost">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Precio Total Piezas Sueltas</span>
+                            <h3 class="kpi-value value-parts" id="val-parts-cost">0.00 €</h3>
+                            <span class="kpi-sub" id="val-parts-cost-sub">En repuestos y restauración</span>
                         </div>
                     </div>
                 </div>
@@ -145,6 +153,13 @@
                             <span class="kpi-label">Piezas Recibidas</span>
                             <h3 class="kpi-value value-equity" id="val-received-missing-parts">0</h3>
                             <span class="kpi-sub">Listas para el montaje</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" id="kpi-shopping-parts-cost">
+                        <div class="kpi-info">
+                            <span class="kpi-label">Total Invertido en Piezas</span>
+                            <h3 class="kpi-value value-parts" id="val-shopping-parts-cost">0.00 €</h3>
+                            <span class="kpi-sub">Coste de piezas sueltas</span>
                         </div>
                     </div>
                 </div>
@@ -278,6 +293,32 @@
                 </div>
             </div>
 
+
+            <div id="goals-view" class="goals-view hidden">
+                <div class="toolbar-section" style="margin-top: 0;">
+                    <div style="display: flex; gap: 10px; width: 100%;">
+                        <div class="search-box" style="flex-grow: 1;">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="goals-search-input" placeholder="Buscar figura en Rebrickable (ej: Mace Windu)...">
+                        </div>
+                        <button id="btn-search-goals" class="btn btn-primary">Buscar</button>
+                        <button id="btn-clear-goals" class="btn btn-secondary">Limpiar</button>
+                    </div>
+                </div>
+                
+                <div id="goals-search-results" class="hidden" style="margin-bottom: 30px;">
+                    <!-- Search results here -->
+                </div>
+
+                <div class="kpi-group-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Tus Objetivos</h2>
+                    <button class="btn btn-primary" onclick="createEmptyFolder()">📁 Crear Carpeta</button>
+                </div>
+                <div id="goals-folders-container" style="display: flex; flex-direction: column; gap: 30px;">
+                    <!-- Folders rendered dynamically here -->
+                </div>
+            </div>
+
             <div id="empty-state" class="empty-state hidden">
                 <div class="empty-icon">📂</div>
                 <h3>No se encontraron sets de Lego</h3>
@@ -354,6 +395,10 @@
                     <div class="form-group set-only-field">
                         <label for="field-extra-costs">Gastos de Envío / Costes Extra (€)</label>
                         <input type="number" id="field-extra-costs" step="0.01" min="0" value="0.00">
+                    </div>
+                    <div class="form-group set-only-field">
+                        <label for="field-parts-cost">Piezas Sueltas / Repuestos (€)</label>
+                        <input type="number" id="field-parts-cost" step="0.01" min="0" value="0.00" placeholder="0.00" title="Gasto acumulado en piezas sueltas y pedidos de repuesto para este set">
                     </div>
 
                     <div class="form-group">
@@ -464,6 +509,18 @@
                 <button id="tab-current-missing" class="parts-tab-btn active">⚠️ Piezas Faltantes actuales</button>
                 <button id="tab-official-inventory" class="parts-tab-btn">🔍 Añadir desde Catálogo Oficial (Rebrickable)</button>
                 <button id="tab-manual-add" class="parts-tab-btn">✏️ Añadir Manualmente</button>
+            </div>
+
+            <!-- Parts Cost Quick Bar for this Set -->
+            <div class="parts-cost-bar" id="parts-cost-bar">
+                <div class="parts-cost-info">
+                    <span class="parts-cost-icon">🧩</span>
+                    <span class="parts-cost-label">Gasto en piezas sueltas de este set:</span>
+                    <strong class="parts-cost-amount" id="parts-modal-cost-val">0.00 €</strong>
+                </div>
+                <div class="parts-cost-quick-edit">
+                    <button type="button" class="btn-outline-parts" id="btn-quick-edit-parts-cost" onclick="quickEditPartsCost()">✏️ Modificar Gasto</button>
+                </div>
             </div>
 
             <div class="parts-modal-content">
@@ -620,6 +677,159 @@
         </div>
     </div>
 
-    <script src="app.js?v=1.1.0"></script>
+    <!-- MISSING PIECE DETAIL MODAL (FICHA COMPLETA) -->
+    <div id="piece-detail-modal" class="modal-overlay hidden" style="z-index: 1100;">
+        <div class="modal-container piece-detail-container">
+            <div class="modal-header piece-detail-header">
+                <div class="piece-detail-title-group">
+                    <span class="piece-detail-kicker">FICHA TÉCNICA DE PIEZA</span>
+                    <h2 id="piece-detail-title">Nombre de la Pieza</h2>
+                </div>
+                <button id="btn-close-piece-detail" class="modal-close-btn" aria-label="Cerrar">&times;</button>
+            </div>
+
+            <div class="modal-body piece-detail-body">
+                <div class="piece-detail-layout">
+                    <!-- Left Column: Large Image Presentation -->
+                    <div class="piece-detail-visual">
+                        <div class="piece-detail-img-box">
+                            <span id="piece-detail-img-badge" class="piece-detail-code-badge">#----</span>
+                            <img id="piece-detail-image" src="images/placeholder.png" alt="Pieza" class="piece-detail-large-img">
+                        </div>
+                        <div class="piece-detail-img-actions">
+                            <a id="piece-detail-img-link" href="#" target="_blank" class="piece-detail-zoom-link" rel="noopener noreferrer">
+                                🔍 Ver imagen original en alta resolución
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Specs & Info -->
+                    <div class="piece-detail-info">
+                        <!-- Status Bar -->
+                        <div class="piece-detail-header-badges">
+                            <div class="piece-badge-item">
+                                <span class="piece-badge-label">Estado:</span>
+                                <span id="piece-detail-badge" class="badge-status badge-needed">Necesitada</span>
+                            </div>
+                            <div class="piece-badge-item">
+                                <span class="piece-badge-label">Cantidad requerida:</span>
+                                <span id="piece-detail-qty-display" class="piece-qty-highlight">x1</span>
+                            </div>
+                        </div>
+
+                        <!-- Technical Specs Block -->
+                        <div class="piece-detail-card">
+                            <h3 class="piece-card-heading">📋 Especificaciones</h3>
+                            <div class="piece-specs-grid">
+                                <div class="piece-spec-item">
+                                    <span class="spec-label">Código de Pieza (ID)</span>
+                                    <span class="spec-value code-value" id="piece-detail-part-num">-</span>
+                                </div>
+                                <div class="piece-spec-item">
+                                    <span class="spec-label">Color Oficial</span>
+                                    <div class="spec-color-container">
+                                        <span id="piece-detail-color-swatch" class="color-swatch-circle"></span>
+                                        <span class="spec-value" id="piece-detail-color-name">-</span>
+                                    </div>
+                                </div>
+                                <div class="piece-spec-item">
+                                    <span class="spec-label">ID Color LEGO</span>
+                                    <span class="spec-value" id="piece-detail-color-id">-</span>
+                                </div>
+                                <div class="piece-spec-item" id="piece-detail-set-box">
+                                    <span class="spec-label">Set Asociado</span>
+                                    <span class="spec-value" id="piece-detail-set-info">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Multi-set list if consolidated view -->
+                        <div id="piece-detail-multiset-container" class="piece-detail-card hidden">
+                            <h3 class="piece-card-heading">🧱 Sets que necesitan esta pieza</h3>
+                            <div id="piece-detail-multiset-list" class="piece-multiset-list"></div>
+                        </div>
+
+                        <!-- Quick management (Status & Quantity) -->
+                        <div class="piece-detail-card" id="piece-detail-mgmt-card">
+                            <h3 class="piece-card-heading">⚙️ Gestión de Estado y Cantidad</h3>
+                            <div class="piece-mgmt-controls">
+                                <div class="piece-mgmt-field">
+                                    <label for="piece-detail-status-select">Estado actual:</label>
+                                    <select id="piece-detail-status-select" class="piece-input-select">
+                                        <option value="needed">⚠️ Necesitada (Pendiente)</option>
+                                        <option value="ordered">📦 Pedida (En Camino)</option>
+                                        <option value="received">✅ Recibida (Completada)</option>
+                                    </select>
+                                </div>
+                                <div class="piece-mgmt-field" id="piece-detail-qty-field">
+                                    <label for="piece-detail-qty-input">Cantidad:</label>
+                                    <div class="piece-qty-stepper">
+                                        <button type="button" id="btn-piece-qty-dec" class="btn-stepper">-</button>
+                                        <input type="number" id="piece-detail-qty-input" min="1" value="1" class="piece-input-number">
+                                        <button type="button" id="btn-piece-qty-inc" class="btn-stepper">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- External Purchase & Catalog Links -->
+                        <div class="piece-detail-card">
+                            <div class="piece-buy-header">
+                                <h3 class="piece-card-heading" style="margin: 0;">🛒 Dónde Comprar Directamente</h3>
+                                <button type="button" id="btn-copy-part-num" class="btn-copy-code" title="Copiar código para buscar en otras tiendas">
+                                    📋 Copiar ID
+                                </button>
+                            </div>
+                            <p class="piece-buy-subtitle">Accede directamente a la búsqueda de esta pieza en las principales tiendas y mercados de LEGO:</p>
+                            <div class="piece-external-grid">
+                                <a id="piece-link-bricklink" href="#" target="_blank" rel="noopener noreferrer" class="btn-market-link link-bricklink">
+                                    <span class="market-icon">🛒</span>
+                                    <div class="market-info">
+                                        <span class="market-name">BrickLink</span>
+                                        <span class="market-sub">Mercado Oficial</span>
+                                    </div>
+                                </a>
+                                <a id="piece-link-lego" href="#" target="_blank" rel="noopener noreferrer" class="btn-market-link link-lego">
+                                    <span class="market-icon">🧱</span>
+                                    <div class="market-info">
+                                        <span class="market-name">LEGO® Pick a Brick</span>
+                                        <span class="market-sub">Tienda Oficial LEGO</span>
+                                    </div>
+                                </a>
+                                <a id="piece-link-brickowl" href="#" target="_blank" rel="noopener noreferrer" class="btn-market-link link-brickowl">
+                                    <span class="market-icon">🦉</span>
+                                    <div class="market-info">
+                                        <span class="market-name">BrickOwl</span>
+                                        <span class="market-sub">Mercado Global</span>
+                                    </div>
+                                </a>
+                                <a id="piece-link-toypro" href="#" target="_blank" rel="noopener noreferrer" class="btn-market-link link-toypro">
+                                    <span class="market-icon">📦</span>
+                                    <div class="market-info">
+                                        <span class="market-name">ToyPro</span>
+                                        <span class="market-sub">Tienda de Piezas</span>
+                                    </div>
+                                </a>
+                                <a id="piece-link-rebrickable" href="#" target="_blank" rel="noopener noreferrer" class="btn-market-link link-rebrickable">
+                                    <span class="market-icon">📊</span>
+                                    <div class="market-info">
+                                        <span class="market-name">Rebrickable</span>
+                                        <span class="market-sub">Comparador de Precios</span>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer piece-detail-footer">
+                <button type="button" id="piece-detail-btn-delete" class="btn btn-danger">🗑️ Eliminar de la lista</button>
+                <button type="button" id="btn-close-piece-detail-footer" class="btn btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=1.2.0"></script>
 </body>
 </html>

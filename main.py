@@ -33,6 +33,7 @@ class LegoSet(BaseModel):
     purchase_price: float = Field(default=0.0, ge=0.0, description="Actual price paid in EUR")
     market_price: float = Field(default=0.0, ge=0.0, description="Current market value in EUR")
     extra_costs: float = Field(default=0.0, ge=0.0, description="Shipping/taxes in EUR")
+    parts_cost: float = Field(default=0.0, ge=0.0, description="Cost of loose / replacement parts in EUR")
     purchase_store: str = Field(default="", description="Store where purchased")
     purchase_location: str = Field(default="", description="Location or Online")
     condition: Literal[
@@ -105,7 +106,7 @@ def read_csv() -> list[dict]:
         headers = [
             "id", "name", "theme", "subcategory", "purchase_date", "release_date",
             "retirement_date", "official_url", "retail_price", "purchase_price",
-            "market_price", "extra_costs", "purchase_store", "purchase_location",
+            "market_price", "extra_costs", "parts_cost", "purchase_store", "purchase_location",
             "condition", "goal", "notes", "image_url"
         ]
         with open(CSV_FILE, mode="w", encoding="utf-8", newline="") as f:
@@ -137,6 +138,11 @@ def read_csv() -> list[dict]:
             except ValueError:
                 extra_costs = 0.0
 
+            try:
+                parts_cost = float(row.get("parts_cost") or 0.0)
+            except ValueError:
+                parts_cost = 0.0
+
             records.append({
                 "id": row.get("id", "").strip(),
                 "name": row.get("name", "").strip(),
@@ -150,6 +156,7 @@ def read_csv() -> list[dict]:
                 "purchase_price": purchase_price,
                 "market_price": market_price,
                 "extra_costs": extra_costs,
+                "parts_cost": parts_cost,
                 "purchase_store": row.get("purchase_store", "").strip(),
                 "purchase_location": row.get("purchase_location", "").strip(),
                 "condition": row.get("condition", "").strip(),
@@ -165,7 +172,7 @@ def write_csv(records: list[dict]):
     headers = [
         "id", "name", "theme", "subcategory", "purchase_date", "release_date",
         "retirement_date", "official_url", "retail_price", "purchase_price",
-        "market_price", "extra_costs", "purchase_store", "purchase_location",
+        "market_price", "extra_costs", "parts_cost", "purchase_store", "purchase_location",
         "condition", "goal", "notes", "image_url"
     ]
     with open(CSV_FILE, mode="w", encoding="utf-8", newline="") as f:
@@ -185,6 +192,7 @@ def write_csv(records: list[dict]):
                 "purchase_price": rec.get("purchase_price", 0.0),
                 "market_price": rec.get("market_price", 0.0),
                 "extra_costs": rec.get("extra_costs", 0.0),
+                "parts_cost": rec.get("parts_cost", 0.0),
                 "purchase_store": rec.get("purchase_store") or "",
                 "purchase_location": rec.get("purchase_location") or "",
                 "condition": rec["condition"],
@@ -486,6 +494,8 @@ def lookup_minifig_on_brickset(minifig_id: str) -> dict:
     # Prices
     result["retail_price"] = 0.0
     result["purchase_price"] = 0.0
+    result["extra_costs"] = 0.0
+    result["parts_cost"] = 0.0
     
     # Market Price
     market_price = 0.0
@@ -603,6 +613,8 @@ def lookup_set_on_brickset(set_id: str) -> dict:
                 
     result["retail_price"] = retail_price
     result["purchase_price"] = 0.0
+    result["extra_costs"] = 0.0
+    result["parts_cost"] = 0.0
     
     # Market Price
     market_price = retail_price
@@ -651,6 +663,8 @@ def lookup_set_on_rebrickable(set_id: str, api_key: str) -> dict:
         "retail_price": 0.0,
         "purchase_price": 0.0,
         "market_price": 0.0,
+        "extra_costs": 0.0,
+        "parts_cost": 0.0,
         "image_url": data.get("set_img_url", ""),
         "official_url": f"https://www.lego.com/es-es/search?q={set_id}"
     }
@@ -799,6 +813,23 @@ def delete_lego(lego_id: str):
     deleted_rec = records.pop(target_idx)
     write_csv(records)
     return {"status": "success", "message": f"Deleted Lego set {lego_id}", "deleted": deleted_rec}
+
+
+class PartsCostUpdate(BaseModel):
+    parts_cost: float = Field(..., ge=0.0, description="Cost of loose / replacement parts in EUR")
+
+@app.patch("/api/legos/{lego_id}/parts-cost")
+def update_parts_cost(lego_id: str, update: PartsCostUpdate):
+    records = read_csv()
+    for rec in records:
+        if rec["id"] == lego_id:
+            rec["parts_cost"] = update.parts_cost
+            write_csv(records)
+            return rec
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Lego set with ID '{lego_id}' not found."
+    )
 
 
 @app.get("/api/minifigs")
@@ -1214,7 +1245,111 @@ def delete_missing_piece(set_id: str, part_num: str, color_id: int):
     return {"status": "success", "message": "Pieza faltante eliminada", "deleted": deleted}
 
 
+import urllib.parse
+
+# --- Goals (Objetivos) Domain ---
+GOALS_JSON = "goals.json"
+
+class Goal(BaseModel):
+    id: str = Field(..., description="Set ID or Minifigure ID")
+    name: str = Field(..., description="Name of the set or minifigure")
+    type: Literal['set', 'minifig', 'folder'] = Field(..., description="Type of the goal")
+    image_url: str = Field(default="", description="Image URL")
+    folder: str = Field(default="Consejo Jedi", description="Folder/Category for this goal")
+    set_info: str = Field(default="", description="Information about sets and years")
+
+def load_goals() -> list[dict]:
+    if os.path.exists(GOALS_JSON):
+        try:
+            with open(GOALS_JSON, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_goals(goals: list[dict]):
+    with open(GOALS_JSON, "w", encoding="utf-8") as f:
+        json.dump(goals, f, indent=2, ensure_ascii=False)
+
+@app.get("/api/goals")
+def get_goals():
+    return load_goals()
+
+@app.post("/api/goals", status_code=status.HTTP_201_CREATED)
+def add_goal(goal: Goal):
+    goals = load_goals()
+    if any(g["id"] == goal.id for g in goals):
+        raise HTTPException(status_code=400, detail="Goal already exists")
+    goals.append(goal.dict())
+    save_goals(goals)
+    return goal
+
+@app.delete("/api/goals/{goal_id}")
+def delete_goal(goal_id: str):
+    goals = load_goals()
+    initial_len = len(goals)
+    goals = [g for g in goals if g["id"] != goal_id]
+    if len(goals) == initial_len:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    save_goals(goals)
+    return {"status": "success"}
+
+# --- Rebrickable Minifig Search & Sets for Minifig ---
+@app.get("/api/rebrickable/search-minifigs")
+def search_rebrickable_minifigs(search: str):
+    api_key = get_rebrickable_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Rebrickable API key required")
+        
+    url = f"https://rebrickable.com/api/v3/lego/minifigs/?search={urllib.parse.quote(search)}&page_size=50"
+    headers = {"Authorization": f"key {api_key}", "User-Agent": "Mozilla/5.0"}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            results = []
+            for item in data.get("results", []):
+                results.append({
+                    "id": item.get("set_num"),
+                    "name": item.get("name"),
+                    "image_url": item.get("set_img_url")
+                })
+            return results
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Rebrickable API error: {e}")
+
+@app.get("/api/rebrickable/minifigs/{minifig_id}/sets")
+def get_sets_for_minifig(minifig_id: str):
+    api_key = get_rebrickable_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Rebrickable API key required")
+        
+    url = f"https://rebrickable.com/api/v3/lego/minifigs/{minifig_id}/sets/?page_size=50"
+    headers = {"Authorization": f"key {api_key}", "User-Agent": "Mozilla/5.0"}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            results = []
+            for item in data.get("results", []):
+                set_num = item.get("set_num", "").replace("-1", "")
+                results.append({
+                    "id": set_num,
+                    "name": item.get("name"),
+                    "image_url": item.get("set_img_url"),
+                    "quantity": item.get("quantity", 1)
+                })
+            return results
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []
+        raise HTTPException(status_code=502, detail=f"Rebrickable API error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Rebrickable API error: {e}")
+
+
 # --- Static Files / Frontend Hosting ---
 # Mount static files folder
 os.makedirs("public", exist_ok=True)
 app.mount("/", StaticFiles(directory="public", html=True), name="static")
+
