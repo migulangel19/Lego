@@ -2937,7 +2937,7 @@ if(btnSearchGoals) {
                 
                 const safeName = m.name.replace(/'/g, "\\'");
                 card.innerHTML = `
-                    <div class="minifig-image-wrapper" style="cursor:pointer;" onclick="openGoalDetail('${g.id}', '${g.name.replace(/'/g, "\'")}', '${g.image_url}', '${g.type}')">
+                    <div class="minifig-image-wrapper" style="cursor:pointer;" onclick="openGoalDetail('${m.id}', '${m.name.replace(/'/g, "\'")}', '${m.image_url}', 'minifig')">
                         <img src="${m.image_url}" alt="${m.name}" class="minifig-image" style="object-fit: contain;" onerror="this.src='images/placeholder.png'">
                     </div>
                     <div class="minifig-info" style="display:flex; flex-direction:column; justify-content:space-between; flex-grow:1;">
